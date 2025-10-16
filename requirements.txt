@@ -1,0 +1,21 @@
+# 寵物聊天機器人 - Python 套件依賴清單
+# LINE Bot + AI 對話功能
+
+# Flask Web 框架
+flask==3.1.2
+
+# LINE Bot SDK v3
+line-bot-sdk==3.19.1
+
+# 環境變數管理
+python-dotenv==1.1.1
+
+# AI 對話核心
+ollama
+
+# 資料庫連接
+pymysql
+cryptography
+
+# 文字處理（簡繁轉換）
+opencc-python-reimplemented
