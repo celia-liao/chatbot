@@ -29,9 +29,17 @@ from linebot.v3.webhooks import (
 # 載入環境變數（從 .env 檔案）
 load_dotenv()
 
-from db_utils import get_pet_profile, get_pet_id_by_line_user
-from personalities import pet_personality_templates
-from chatbot_ollama import build_system_prompt, chat_with_pet
+# 支援兩種運行方式：
+# 1. 作為套件運行（CloudPanel 部署）：from mybot.xxx import
+# 2. 作為獨立腳本運行（本地開發）：from xxx import
+try:
+    from mybot.db_utils import get_pet_profile, get_pet_id_by_line_user
+    from mybot.personalities import pet_personality_templates
+    from mybot.chatbot_ollama import build_system_prompt, chat_with_pet
+except ImportError:
+    from db_utils import get_pet_profile, get_pet_id_by_line_user
+    from personalities import pet_personality_templates
+    from chatbot_ollama import build_system_prompt, chat_with_pet
 
 # ============================================
 # Flask 應用程式初始化
