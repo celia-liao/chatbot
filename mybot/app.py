@@ -138,7 +138,7 @@ def process_user_message(user_id, user_message):
     if user_message.lower() in ['clear', '清除', '重置']:
         if user_id in user_chat_history:
             del user_chat_history[user_id]
-        return "汪汪！我忘記之前的對話了，我們重新開始吧！"
+        return "我忘記之前的對話了，我們重新開始吧！"
     
     # 2. 顯示說明
     if user_message.lower() in ['help', '幫助', '說明']:
@@ -149,7 +149,7 @@ def process_user_message(user_id, user_message):
 • 輸入「說明」查看此訊息
 • 輸入「我的ID」查看你的使用者ID
 
-快來跟我聊天吧！汪汪～"""
+快來跟我聊天吧！～"""
     
     # 3. 顯示使用者 ID
     if user_message.lower() in ['我的id', '我的ID', 'myid', 'my id', 'userid', 'user id']:
@@ -158,7 +158,7 @@ def process_user_message(user_id, user_message):
 LINE User ID:
 {user_id}
 
-汪汪～主人，這是你專屬的 ID 喔！"""
+主人，這是你專屬的 ID 喔！"""
     
     # === 一般對話處理 ===
     
@@ -166,7 +166,7 @@ LINE User ID:
     system_prompt, pet_name = get_pet_system_prompt()
     
     if not system_prompt:
-        return "汪嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
+        return "嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
     
     # 取得該使用者的對話歷史
     history = user_chat_history.get(user_id, [])
@@ -197,7 +197,7 @@ LINE User ID:
         
     except Exception as e:
         app.logger.error(f"生成回覆時發生錯誤: {e}")
-        return "汪嗚...主人，我現在有點不舒服，請稍後再試試看 🥺"
+        return "嗚...主人，我現在有點不舒服，請稍後再試試看 🥺"
 
 
 # ============================================
@@ -358,6 +358,9 @@ def handle_text_message(event):
         # === 步驟 1: 檢查使用者是否已在 pets 表中設定 ===
         pet_id = get_pet_id_by_line_user(user_id)
         
+        # 記錄查詢到的 pet_id
+        app.logger.info(f"使用者 {user_id} 綁定的 pet_id: {pet_id}")
+        
         # 特殊處理「我的ID」指令
         if user_message.lower() in ['我的id', '我的ID', 'myid', 'my id', 'userid', 'user id']:
             if pet_id:
@@ -367,7 +370,7 @@ def handle_text_message(event):
 LINE User ID:
 {user_id}
 
-✅ 你已經設定好寵物了，可以直接聊天喔！汪汪～"""
+✅ 你已經設定好寵物了，可以直接聊天喔～"""
             else:
                 # 未設定寵物的使用者
                 reply_text = f"""🆔 你的使用者資訊
@@ -396,8 +399,11 @@ LINE User ID:
             # 修改 process_user_message 調用，傳入 pet_id
             system_prompt, pet_name = get_pet_system_prompt(pet_id)
             
+            # 記錄查詢到的寵物資料
+            app.logger.info(f"載入寵物資料 - pet_id: {pet_id}, pet_name: {pet_name}")
+            
             if not system_prompt:
-                reply_text = "汪嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
+                reply_text = "嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
             else:
                 # 處理特殊指令
                 # 使用 (user_id, pet_id) 組合作為對話歷史的 key
@@ -406,7 +412,7 @@ LINE User ID:
                 if user_message.lower() in ['clear', '清除', '重置']:
                     if chat_key in user_chat_history:
                         del user_chat_history[chat_key]
-                    reply_text = "汪汪！我忘記之前的對話了，我們重新開始吧！"
+                    reply_text = "嗚！我忘記之前的對話了，我們重新開始吧！"
                 elif user_message.lower() in ['help', '幫助', '說明']:
                     reply_text = """🐕 寵物聊天機器人使用說明
 
@@ -415,7 +421,7 @@ LINE User ID:
 • 輸入「說明」查看此訊息
 • 輸入「我的ID」查看你的使用者ID
 
-快來跟我聊天吧！汪汪～"""
+快來跟我聊天吧！～"""
                 else:
                     # 一般對話
                     history = user_chat_history.get(chat_key, [])
@@ -462,7 +468,7 @@ LINE User ID:
                 line_bot_api.reply_message_with_http_info(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text="汪嗚...主人，我現在有點不舒服 🥺")]
+                        messages=[TextMessage(text="嗚...主人，我現在有點不舒服 🥺")]
                     )
                 )
         except:

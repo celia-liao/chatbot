@@ -67,12 +67,20 @@ def get_pet_profile(pet_id: int):
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # 1. 查詢寵物基本資料
-            cursor.execute("SELECT * FROM pets WHERE pet_id=%s", (pet_id,))
+            # 1. 查詢寵物基本資料（明確指定欄位）
+            cursor.execute(
+                "SELECT pet_id, pet_name, breed, personality, slogan, line_user_id "
+                "FROM pets WHERE pet_id=%s", 
+                (pet_id,)
+            )
             pet = cursor.fetchone()
+            
+            # 除錯：顯示查詢到的寵物資料
+            print(f"[DEBUG] 查詢 pet_id={pet_id} 的資料：{pet}")
             
             # 如果找不到寵物，返回 None
             if not pet:
+                print(f"[DEBUG] 找不到 pet_id={pet_id} 的資料")
                 return None
 
             # 2. 查詢生命軌跡（只顯示 is_visible=1 的事件，按 display_order 排序）
@@ -90,14 +98,19 @@ def get_pet_profile(pet_id: int):
             letter = cursor.fetchone()
 
         # 組合並返回完整的寵物資料
-        return {
+        result = {
             "name": pet["pet_name"],                           # 寵物名字
-            "breed": "黃金獵犬",                                # 寵物品種（暫時寫死，未來可從資料庫讀取）
-            "persona_key": "easygoing",                        # 性格類型（暫時寫死，未來可從資料庫讀取）
-            "cover_slogan": pet["slogan"] if pet["slogan"] else "",  # 主人的愛意標語
+            "breed": pet["breed"] if pet.get("breed") else "寵物",  # 寵物品種（從資料庫讀取）
+            "persona_key": pet["personality"] if pet.get("personality") else "friendly",  # 性格類型（從資料庫讀取）
+            "cover_slogan": pet["slogan"] if pet.get("slogan") else "",  # 主人的愛意標語
             "lifeData": life,                                  # 生命軌跡事件列表
             "letter": letter["content"] if letter else ""      # 主人的信件內容
         }
+        
+        # 除錯：顯示最終返回的資料
+        print(f"[DEBUG] 返回的寵物資料 - name: {result['name']}, breed: {result['breed']}, persona: {result['persona_key']}")
+        
+        return result
 
     finally:
         # 無論成功或失敗，都要關閉資料庫連接
@@ -121,14 +134,26 @@ def get_pet_id_by_line_user(line_user_id: str):
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
+            # 查詢時可能欄位名稱是 id 或 pet_id，都試試
             cursor.execute(
-                "SELECT pet_id FROM pets WHERE line_user_id=%s", 
+                "SELECT pet_id, pet_name, breed FROM pets WHERE line_user_id=%s", 
                 (line_user_id,)
             )
             result = cursor.fetchone()
-            return result["pet_id"] if result else None
+            
+            # 除錯：顯示查詢結果
+            print(f"[DEBUG] 查詢 line_user_id={line_user_id} 的結果：{result}")
+            
+            # 優先使用 pet_id，如果沒有則用 id
+            if result:
+                pet_id = result.get("pet_id") or result.get("id")
+                print(f"[DEBUG] 找到 pet_id={pet_id}, 寵物名稱={result.get('pet_name')}, 品種={result.get('breed')}")
+                return pet_id
+            else:
+                print(f"[DEBUG] 找不到 line_user_id={line_user_id} 的寵物綁定")
+                return None
     except Exception as e:
-        print(f"查詢使用者寵物對應失敗: {e}")
+        print(f"[ERROR] 查詢使用者寵物對應失敗: {e}")
         return None
     finally:
         connection.close()
