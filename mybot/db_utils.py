@@ -8,7 +8,12 @@
 # ============================================
 
 import pymysql
-from config import DB_CONFIG
+
+# 支援兩種運行方式
+try:
+    from mybot.config import DB_CONFIG
+except ImportError:
+    from config import DB_CONFIG
 
 def get_connection():
     """
