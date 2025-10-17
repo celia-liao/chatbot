@@ -1,0 +1,39 @@
+# ===== LINE Bot 環境變數設定範本 =====
+# 請複製此內容到 .env 檔案中
+
+# ===== LINE Bot 設定 =====
+# 從 LINE Developers Console 取得
+# https://developers.line.biz/console/
+LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token
+LINE_CHANNEL_SECRET=your_channel_secret
+
+# ===== 資料庫設定 =====
+# CloudPanel 資料庫資訊
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=lbblacktech-laravel
+DB_PASSWORD=你的資料庫密碼
+DB_NAME=lbblacktech-laravel
+
+# ===== 應用程式設定 =====
+PORT=8090
+PET_ID=1
+OLLAMA_MODEL=qwen:7b
+
+# ===== Flask 環境 =====
+FLASK_ENV=production
+FLASK_DEBUG=0
+
+# ===== 設定說明 =====
+# LINE_CHANNEL_ACCESS_TOKEN: 在 LINE Developers Console 的 Messaging API 頁籤取得
+# LINE_CHANNEL_SECRET: 在 LINE Developers Console 的 Basic settings 頁籤取得
+# DB_HOST: 資料庫主機位址（通常是 127.0.0.1 或 localhost）
+# DB_USER: 資料庫使用者名稱
+# DB_PASSWORD: 資料庫密碼
+# DB_NAME: 資料庫名稱
+# PORT: 應用程式監聽的 Port（預設 8090）
+# PET_ID: 寵物 ID（從資料庫的 pets 表查詢）
+# OLLAMA_MODEL: 使用的 AI 模型名稱
+# FLASK_ENV: Flask 環境（production 或 development）
+# FLASK_DEBUG: 是否開啟 Debug 模式（生產環境設為 0）
+

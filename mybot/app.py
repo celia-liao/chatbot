@@ -8,8 +8,9 @@
 # ============================================
 
 import os
+from datetime import datetime
 from dotenv import load_dotenv
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 
 # LINE Bot SDK v3
 from linebot.v3 import WebhookHandler
@@ -272,6 +273,59 @@ def test():
         return f"✅ 寵物聊天機器人已就緒！寵物名稱：{pet_name}"
     else:
         return "❌ 無法載入寵物資料，請檢查資料庫連線"
+
+
+@app.route("/healthz")
+def healthz():
+    """
+    健康檢查端點
+    
+    返回:
+        JSON: 服務狀態
+    
+    說明:
+        用於 systemd、Nginx 或監控工具檢查服務是否正常
+        檢查項目：LINE Bot 憑證、資料庫連線、Ollama 連線
+    """
+    status = {
+        "status": "healthy",
+        "service": "LINE Bot - Pet Chatbot",
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    checks = {}
+    
+    # 檢查 LINE Bot 憑證
+    checks["line_credentials"] = bool(
+        LINE_CHANNEL_ACCESS_TOKEN and 
+        LINE_CHANNEL_SECRET and
+        LINE_CHANNEL_ACCESS_TOKEN != 'your_channel_access_token'
+    )
+    
+    # 檢查寵物資料載入
+    system_prompt, pet_name = get_pet_system_prompt()
+    checks["pet_data"] = bool(system_prompt and pet_name)
+    if pet_name:
+        status["pet_name"] = pet_name
+    
+    # 檢查 Ollama 連線（可選）
+    try:
+        import ollama
+        ollama.list()
+        checks["ollama_connection"] = True
+    except Exception as e:
+        checks["ollama_connection"] = False
+        app.logger.warning(f"Ollama 連線檢查失敗: {e}")
+    
+    # 判斷整體狀態
+    all_healthy = all(checks.values())
+    
+    status["checks"] = checks
+    status["status"] = "healthy" if all_healthy else "degraded"
+    
+    http_status = 200 if all_healthy else 503
+    
+    return jsonify(status), http_status
 
 
 # ============================================
