@@ -4,6 +4,9 @@
 # Flask Web 框架
 flask==3.1.2
 
+# 生產環境 WSGI 伺服器
+gunicorn==23.0.0
+
 # LINE Bot SDK v3
 line-bot-sdk==3.19.1
 
