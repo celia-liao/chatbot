@@ -68,7 +68,8 @@ PET_ID = int(os.getenv('PET_ID', 1))
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen:7b')
 
 # 儲存每個使用者的對話歷史
-# 格式：{user_id: [{"user": "...", "bot": "..."}, ...]}
+# 格式：{(user_id, pet_id): [{"user": "...", "bot": "..."}, ...]}
+# 使用 tuple 作為 key，確保換寵物時會清除舊對話
 user_chat_history = {}
 
 # ============================================
@@ -399,9 +400,12 @@ LINE User ID:
                 reply_text = "汪嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
             else:
                 # 處理特殊指令
+                # 使用 (user_id, pet_id) 組合作為對話歷史的 key
+                chat_key = (user_id, pet_id)
+                
                 if user_message.lower() in ['clear', '清除', '重置']:
-                    if user_id in user_chat_history:
-                        del user_chat_history[user_id]
+                    if chat_key in user_chat_history:
+                        del user_chat_history[chat_key]
                     reply_text = "汪汪！我忘記之前的對話了，我們重新開始吧！"
                 elif user_message.lower() in ['help', '幫助', '說明']:
                     reply_text = """🐕 寵物聊天機器人使用說明
@@ -414,7 +418,7 @@ LINE User ID:
 快來跟我聊天吧！汪汪～"""
                 else:
                     # 一般對話
-                    history = user_chat_history.get(user_id, [])
+                    history = user_chat_history.get(chat_key, [])
                     
                     reply_text = chat_with_pet(
                         system_prompt=system_prompt,
@@ -423,18 +427,18 @@ LINE User ID:
                         model=OLLAMA_MODEL
                     )
                     
-                    # 更新對話歷史
-                    if user_id not in user_chat_history:
-                        user_chat_history[user_id] = []
+                    # 更新對話歷史（使用 chat_key）
+                    if chat_key not in user_chat_history:
+                        user_chat_history[chat_key] = []
                     
-                    user_chat_history[user_id].append({
+                    user_chat_history[chat_key].append({
                         "user": user_message,
                         "bot": reply_text
                     })
                     
                     # 限制歷史記錄長度
-                    if len(user_chat_history[user_id]) > 10:
-                        user_chat_history[user_id] = user_chat_history[user_id][-8:]
+                    if len(user_chat_history[chat_key]) > 10:
+                        user_chat_history[chat_key] = user_chat_history[chat_key][-8:]
         
         # 使用 SDK v3 回覆訊息
         with ApiClient(configuration) as api_client:
