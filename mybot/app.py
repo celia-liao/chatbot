@@ -34,11 +34,23 @@ load_dotenv()
 # 1. 作為套件運行（CloudPanel 部署）：from mybot.xxx import
 # 2. 作為獨立腳本運行（本地開發）：from xxx import
 try:
-    from mybot.db_utils import get_pet_profile, get_pet_id_by_line_user
+    from mybot.db_utils import (
+        get_pet_profile, 
+        get_pet_id_by_line_user,
+        save_chat_message,
+        get_chat_history,
+        clear_chat_history
+    )
     from mybot.personalities import pet_personality_templates
     from mybot.chatbot_ollama import build_system_prompt, chat_with_pet
 except ImportError:
-    from db_utils import get_pet_profile, get_pet_id_by_line_user
+    from db_utils import (
+        get_pet_profile, 
+        get_pet_id_by_line_user,
+        save_chat_message,
+        get_chat_history,
+        clear_chat_history
+    )
     from personalities import pet_personality_templates
     from chatbot_ollama import build_system_prompt, chat_with_pet
 
@@ -67,10 +79,15 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 PET_ID = int(os.getenv('PET_ID', 1))
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen:7b')
 
-# 儲存每個使用者的對話歷史
-# 格式：{(user_id, pet_id): [{"user": "...", "bot": "..."}, ...]}
-# 使用 tuple 作為 key，確保換寵物時會清除舊對話
-user_chat_history = {}
+# ============================================
+# 對話記錄已改用資料庫儲存
+# ============================================
+# 不再使用記憶體存儲對話歷史，改為使用資料庫 chat_history 資料表
+# 優點：
+# 1. 持久化儲存，服務重啟後不會丟失對話
+# 2. 不同寵物的對話自動分離（透過 line_user_id + pet_id 組合）
+# 3. 可以在多個服務實例間共享對話歷史
+# ============================================
 
 # ============================================
 # 核心功能函數
@@ -113,91 +130,6 @@ def get_pet_system_prompt(pet_id=None):
     except Exception as e:
         app.logger.error(f"載入寵物資料失敗: {e}")
         return None, None
-
-
-def process_user_message(user_id, user_message):
-    """
-    處理使用者訊息並生成回覆
-    
-    參數:
-        user_id (str): LINE 使用者 ID
-        user_message (str): 使用者傳送的訊息
-    
-    返回:
-        str: 寵物的回覆文字
-    
-    說明:
-        1. 檢查特殊指令（清除、說明）
-        2. 取得對話歷史
-        3. 呼叫 AI 生成回覆
-        4. 更新對話歷史
-    """
-    # === 特殊指令處理 ===
-    
-    # 1. 清除對話歷史
-    if user_message.lower() in ['clear', '清除', '重置']:
-        if user_id in user_chat_history:
-            del user_chat_history[user_id]
-        return "我忘記之前的對話了，我們重新開始吧！"
-    
-    # 2. 顯示說明
-    if user_message.lower() in ['help', '幫助', '說明']:
-        return """🐕 寵物聊天機器人使用說明
-
-• 直接傳送訊息，我會像寵物一樣回覆你
-• 輸入「清除」可以重置對話記錄
-• 輸入「說明」查看此訊息
-• 輸入「我的ID」查看你的使用者ID
-
-快來跟我聊天吧！～"""
-    
-    # 3. 顯示使用者 ID
-    if user_message.lower() in ['我的id', '我的ID', 'myid', 'my id', 'userid', 'user id']:
-        return f"""🆔 你的使用者資訊
-
-LINE User ID:
-{user_id}
-
-主人，這是你專屬的 ID 喔！"""
-    
-    # === 一般對話處理 ===
-    
-    # 取得寵物系統提示詞
-    system_prompt, pet_name = get_pet_system_prompt()
-    
-    if not system_prompt:
-        return "嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
-    
-    # 取得該使用者的對話歷史
-    history = user_chat_history.get(user_id, [])
-    
-    try:
-        # 呼叫 AI 模型生成回覆
-        reply = chat_with_pet(
-            system_prompt=system_prompt,
-            user_input=user_message,
-            history=history,
-            model=OLLAMA_MODEL
-        )
-        
-        # 更新對話歷史
-        if user_id not in user_chat_history:
-            user_chat_history[user_id] = []
-        
-        user_chat_history[user_id].append({
-            "user": user_message,
-            "bot": reply
-        })
-        
-        # 限制歷史記錄長度（避免 prompt 過長）
-        if len(user_chat_history[user_id]) > 10:
-            user_chat_history[user_id] = user_chat_history[user_id][-8:]
-        
-        return reply
-        
-    except Exception as e:
-        app.logger.error(f"生成回覆時發生錯誤: {e}")
-        return "嗚...主人，我現在有點不舒服，請稍後再試試看 🥺"
 
 
 # ============================================
@@ -406,13 +338,11 @@ LINE User ID:
                 reply_text = "嗚...主人，我現在記不起來自己是誰了 😢\n請稍後再試試看"
             else:
                 # 處理特殊指令
-                # 使用 (user_id, pet_id) 組合作為對話歷史的 key
-                chat_key = (user_id, pet_id)
-                
                 if user_message.lower() in ['clear', '清除', '重置']:
-                    if chat_key in user_chat_history:
-                        del user_chat_history[chat_key]
+                    # 清除資料庫中的對話記錄
+                    clear_chat_history(user_id, pet_id)
                     reply_text = "嗚！我忘記之前的對話了，我們重新開始吧！"
+                    
                 elif user_message.lower() in ['help', '幫助', '說明']:
                     reply_text = """🐕 寵物聊天機器人使用說明
 
@@ -422,10 +352,15 @@ LINE User ID:
 • 輸入「我的ID」查看你的使用者ID
 
 快來跟我聊天吧！～"""
-                else:
-                    # 一般對話
-                    history = user_chat_history.get(chat_key, [])
                     
+                else:
+                    # 一般對話 - 從資料庫讀取對話歷史
+                    history = get_chat_history(user_id, pet_id, limit=8)
+                    
+                    # 先儲存使用者的訊息
+                    save_chat_message(user_id, pet_id, 'user', user_message)
+                    
+                    # 生成寵物回覆
                     reply_text = chat_with_pet(
                         system_prompt=system_prompt,
                         user_input=user_message,
@@ -433,18 +368,8 @@ LINE User ID:
                         model=OLLAMA_MODEL
                     )
                     
-                    # 更新對話歷史（使用 chat_key）
-                    if chat_key not in user_chat_history:
-                        user_chat_history[chat_key] = []
-                    
-                    user_chat_history[chat_key].append({
-                        "user": user_message,
-                        "bot": reply_text
-                    })
-                    
-                    # 限制歷史記錄長度
-                    if len(user_chat_history[chat_key]) > 10:
-                        user_chat_history[chat_key] = user_chat_history[chat_key][-8:]
+                    # 儲存寵物的回覆
+                    save_chat_message(user_id, pet_id, 'assistant', reply_text)
         
         # 使用 SDK v3 回覆訊息
         with ApiClient(configuration) as api_client:

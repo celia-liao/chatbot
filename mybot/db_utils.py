@@ -157,3 +157,136 @@ def get_pet_id_by_line_user(line_user_id: str):
         return None
     finally:
         connection.close()
+
+
+# ============================================
+# 對話記錄資料庫操作函數
+# ============================================
+
+def save_chat_message(line_user_id: str, pet_id: int, role: str, message: str):
+    """
+    儲存一則對話訊息到資料庫
+    
+    參數:
+        line_user_id (str): LINE 使用者 ID
+        pet_id (int): 寵物 ID
+        role (str): 角色，'user' 或 'assistant'
+        message (str): 訊息內容
+    
+    返回:
+        bool: 儲存成功返回 True，失敗返回 False
+    
+    說明:
+        將對話記錄儲存到 chat_history 資料表
+        每一則使用者訊息或寵物回覆都會獨立儲存
+    """
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO chat_history (line_user_id, pet_id, role, message) "
+                "VALUES (%s, %s, %s, %s)",
+                (line_user_id, pet_id, role, message)
+            )
+            connection.commit()
+            print(f"[DEBUG] 已儲存對話記錄 - user: {line_user_id}, pet: {pet_id}, role: {role}")
+            return True
+    except Exception as e:
+        print(f"[ERROR] 儲存對話記錄失敗: {e}")
+        connection.rollback()
+        return False
+    finally:
+        connection.close()
+
+
+def get_chat_history(line_user_id: str, pet_id: int, limit: int = 10):
+    """
+    從資料庫讀取對話歷史
+    
+    參數:
+        line_user_id (str): LINE 使用者 ID
+        pet_id (int): 寵物 ID
+        limit (int): 最多讀取幾輪對話（預設 10 輪，即 20 則訊息）
+    
+    返回:
+        list: 對話歷史列表，格式為 [{"user": "...", "bot": "..."}, ...]
+        空列表: 如果沒有對話記錄或發生錯誤
+    
+    說明:
+        從 chat_history 資料表讀取最近的對話記錄
+        自動組合成 user-bot 配對格式，供 AI 模型使用
+        按時間順序排列（最舊的在前）
+    """
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 讀取最近的對話（限制數量避免 prompt 過長）
+            # limit * 2 是因為一輪對話包含 user 和 assistant 兩則訊息
+            cursor.execute(
+                "SELECT role, message FROM chat_history "
+                "WHERE line_user_id=%s AND pet_id=%s "
+                "ORDER BY created_at DESC "
+                "LIMIT %s",
+                (line_user_id, pet_id, limit * 2)
+            )
+            messages = cursor.fetchall()
+            
+            # 反轉順序（最舊的在前）
+            messages.reverse()
+            
+            # 組合成 {"user": "...", "bot": "..."} 格式
+            history = []
+            temp_user_msg = None
+            
+            for msg in messages:
+                if msg['role'] == 'user':
+                    temp_user_msg = msg['message']
+                elif msg['role'] == 'assistant' and temp_user_msg:
+                    history.append({
+                        "user": temp_user_msg,
+                        "bot": msg['message']
+                    })
+                    temp_user_msg = None
+            
+            print(f"[DEBUG] 讀取對話歷史 - user: {line_user_id}, pet: {pet_id}, 共 {len(history)} 輪對話")
+            return history
+            
+    except Exception as e:
+        print(f"[ERROR] 讀取對話歷史失敗: {e}")
+        return []
+    finally:
+        connection.close()
+
+
+def clear_chat_history(line_user_id: str, pet_id: int):
+    """
+    清除特定使用者與特定寵物的對話記錄
+    
+    參數:
+        line_user_id (str): LINE 使用者 ID
+        pet_id (int): 寵物 ID
+    
+    返回:
+        bool: 清除成功返回 True，失敗返回 False
+    
+    說明:
+        刪除資料庫中該使用者與該寵物的所有對話記錄
+        用於「清除」指令
+    """
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM chat_history WHERE line_user_id=%s AND pet_id=%s",
+                (line_user_id, pet_id)
+            )
+            deleted_count = cursor.rowcount
+            connection.commit()
+            print(f"[DEBUG] 已清除對話記錄 - user: {line_user_id}, pet: {pet_id}, 刪除 {deleted_count} 則訊息")
+            return True
+    except Exception as e:
+        print(f"[ERROR] 清除對話記錄失敗: {e}")
+        connection.rollback()
+        return False
+    finally:
+        connection.close()
