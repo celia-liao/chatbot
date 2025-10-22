@@ -13,12 +13,13 @@ from opencc import OpenCC
 # 初始化簡繁轉換器（Simple to Traditional）
 cc = OpenCC('s2t')  # 簡體轉繁體
 
-def convert_simple_to_traditional(text: str) -> str:
+def convert_simple_to_traditional(text: str, protected_words: list = None) -> str:
     """
-    將簡體中文轉換為繁體中文
+    將簡體中文轉換為繁體中文，並保護特定詞彙不被轉換
     
     參數:
         text (str): 輸入的簡體中文文字
+        protected_words (list, optional): 需要保護的詞彙列表（例如寵物名字）
     
     返回:
         str: 轉換後的繁體中文文字
@@ -26,8 +27,29 @@ def convert_simple_to_traditional(text: str) -> str:
     說明:
         使用 OpenCC (Open Chinese Convert) 進行簡繁轉換
         確保 Qwen 模型輸出的簡體中文能被正確顯示為繁體
+        保護特定詞彙（如寵物名字）避免被錯誤轉換（例如「里長」→「裏長」）
     """
-    return cc.convert(text)
+    if not protected_words:
+        return cc.convert(text)
+    
+    # 使用臨時標記保護特定詞彙
+    protected_map = {}
+    temp_text = text
+    
+    for i, word in enumerate(protected_words):
+        if word and word in temp_text:
+            placeholder = f"__PROTECTED_{i}__"
+            protected_map[placeholder] = word
+            temp_text = temp_text.replace(word, placeholder)
+    
+    # 進行簡繁轉換
+    converted_text = cc.convert(temp_text)
+    
+    # 還原保護的詞彙
+    for placeholder, original_word in protected_map.items():
+        converted_text = converted_text.replace(placeholder, original_word)
+    
+    return converted_text
 
 def build_system_prompt(pet_name, persona, life_data=None, cover_slogan=None, letter=None, breed=None):
     """
@@ -113,7 +135,7 @@ def build_system_prompt(pet_name, persona, life_data=None, cover_slogan=None, le
     """
 
 
-def chat_with_pet(system_prompt, user_input, history=None, model="qwen:7b"):
+def chat_with_pet(system_prompt, user_input, history=None, model="qwen:7b", pet_name=None):
     """
     呼叫 Ollama 模型進行對話，生成寵物的回覆
     
@@ -122,6 +144,7 @@ def chat_with_pet(system_prompt, user_input, history=None, model="qwen:7b"):
         user_input (str): 主人輸入的訊息
         history (list, optional): 對話歷史記錄，格式為 [{"user": "...", "bot": "..."}, ...]
         model (str): 使用的 Ollama 模型名稱，預設為 "qwen:7b"
+        pet_name (str, optional): 寵物名字，用於在簡繁轉換時保護不被錯誤轉換
     
     返回:
         str: 寵物的回覆（繁體中文）
@@ -131,6 +154,7 @@ def chat_with_pet(system_prompt, user_input, history=None, model="qwen:7b"):
         2. 呼叫本地 Ollama API 生成回覆
         3. 自動將簡體輸出轉換為繁體中文
         4. 支援多輪對話的上下文記憶
+        5. 保護寵物名字避免被錯誤轉換（例如「里長」→「裏長」）
     
     注意:
         - 需要 Ollama 服務運行在本機
@@ -162,7 +186,8 @@ def chat_with_pet(system_prompt, user_input, history=None, model="qwen:7b"):
     # 取得回覆
     reply = response["message"]["content"]
     
-    # 後處理：將簡體中文轉換為繁體中文
-    reply = convert_simple_to_traditional(reply)
+    # 後處理：將簡體中文轉換為繁體中文，並保護寵物名字
+    protected_words = [pet_name] if pet_name else []
+    reply = convert_simple_to_traditional(reply, protected_words=protected_words)
     
     return reply

@@ -360,12 +360,13 @@ LINE User ID:
                     # 先儲存使用者的訊息
                     save_chat_message(user_id, pet_id, 'user', user_message)
                     
-                    # 生成寵物回覆
+                    # 生成寵物回覆（傳入寵物名字以保護不被錯誤轉換）
                     reply_text = chat_with_pet(
                         system_prompt=system_prompt,
                         user_input=user_message,
                         history=history,
-                        model=OLLAMA_MODEL
+                        model=OLLAMA_MODEL,
+                        pet_name=pet_name
                     )
                     
                     # 儲存寵物的回覆
