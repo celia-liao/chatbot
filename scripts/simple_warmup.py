@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-簡化版模型預熱腳本
-專門處理 Ollama 模型預熱問題
+超簡化版模型預熱腳本
+直接使用相對路徑導入
 """
 
 import os
@@ -13,17 +13,16 @@ from dotenv import load_dotenv
 # 載入環境變數
 load_dotenv()
 
-# 添加 mybot 目錄到 Python 路徑
+# 切換到專案根目錄
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
-mybot_path = os.path.join(project_root, 'mybot')
-sys.path.insert(0, mybot_path)
+os.chdir(project_root)
 
-# 除錯資訊
-print(f"🔍 腳本目錄: {script_dir}")
-print(f"📁 專案根目錄: {project_root}")
-print(f"🐍 mybot 路徑: {mybot_path}")
-print(f"✅ mybot 目錄存在: {os.path.exists(mybot_path)}")
+# 添加 mybot 到 Python 路徑
+sys.path.insert(0, 'mybot')
+
+print(f"🔍 工作目錄: {os.getcwd()}")
+print(f"🐍 Python 路徑: {sys.path[:3]}")
 
 def simple_ollama_warmup():
     """簡化版 Ollama 預熱"""
@@ -31,7 +30,7 @@ def simple_ollama_warmup():
     
     try:
         import ollama
-        from mybot.chatbot_ollama import chat_with_pet
+        from chatbot_ollama import chat_with_pet
         
         model_name = os.getenv('OLLAMA_MODEL', 'qwen:7b')
         print(f"📦 模型名稱: {model_name}")
@@ -68,7 +67,7 @@ def simple_ollama_warmup():
 
 def main():
     """主函數"""
-    print("🚀 開始簡化版模型預熱...")
+    print("🚀 開始超簡化版模型預熱...")
     print("=" * 50)
     
     ai_mode = os.getenv('AI_MODE', 'ollama')

@@ -17,7 +17,7 @@ sudo ./scripts/setup_systemd.sh
 ### 模型預熱
 ```bash
 # 預熱模型（減少聊天等待時間）
-python3 scripts/warmup_models.py
+python3 scripts/simple_warmup.py
 ```
 
 ### 服務管理
@@ -45,7 +45,7 @@ scripts/
 ├── deploy_to_server.sh    # 完整部署腳本
 ├── quick_deploy.sh        # 快速部署腳本
 ├── setup_systemd.sh       # 服務設定腳本
-├── warmup_models.py       # 模型預熱腳本
+├── simple_warmup.py       # 模型預熱腳本
 ├── README.md              # 詳細說明
 └── QUICK_START.md         # 快速開始指南
 ```
