@@ -24,9 +24,17 @@ log_warning() {
 }
 
 # 檢查是否在正確的目錄
-if [ ! -f "mybot/app.py" ]; then
+if [ ! -f "mybot/app.py" ] && [ ! -f "../mybot/app.py" ]; then
     echo "❌ 請在專案根目錄執行此腳本"
+    echo "💡 正確的執行方式："
+    echo "   cd /home/ruru1211-chatbot/htdocs/chatbot.ruru1211.xyz/chatbot/"
+    echo "   ./scripts/quick_deploy.sh"
     exit 1
+fi
+
+# 如果在 scripts 目錄中執行，切換到上層目錄
+if [ -f "../mybot/app.py" ]; then
+    cd ..
 fi
 
 log_info "🚀 開始快速部署..."
@@ -42,6 +50,9 @@ pip install -r mybot/requirements.txt
 # 3. 預熱模型
 log_info "🔥 預熱 AI 模型..."
 python3 scripts/warmup_models.py
+if [ $? -ne 0 ]; then
+    log_warning "模型預熱失敗，但繼續部署"
+fi
 
 # 4. 啟動服務
 log_info "🔄 啟動服務..."
