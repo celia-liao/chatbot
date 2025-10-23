@@ -130,7 +130,16 @@ if [ ! -d "${LOG_DIR}" ]; then
     print_success "日誌目錄已建立"
 fi
 
-# ===== 步驟 9: 檢查並重啟服務 =====
+# ===== 步驟 9: 預熱 AI 模型 =====
+print_step "預熱 AI 模型..."
+if [ -f "scripts/warmup_models.py" ]; then
+    python3 scripts/warmup_models.py
+    print_success "模型預熱完成"
+else
+    print_warning "模型預熱腳本不存在，跳過預熱"
+fi
+
+# ===== 步驟 10: 檢查並重啟服務 =====
 print_step "檢查服務狀態..."
 if systemctl is-active --quiet ${SERVICE_NAME}; then
     print_step "重啟 ${SERVICE_NAME}..."
