@@ -1,24 +1,102 @@
+# ============================================
 # 寵物聊天機器人 - Python 套件依賴清單
-# LINE Bot + AI 對話功能
+# ============================================
+# LINE Bot + AI 對話功能 + 資料庫持久化
+# 版本：2025-10-22
+# ============================================
 
+# ===== 核心 Web 框架 =====
 # Flask Web 框架
-flask==3.1.2
+Flask==3.1.2
+Werkzeug==3.1.3
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+click==8.3.0
+itsdangerous==2.2.0
+blinker==1.9.0
 
 # 生產環境 WSGI 伺服器
 gunicorn==23.0.0
 
-# LINE Bot SDK v3
+# ===== LINE Bot SDK v3 =====
+# LINE Bot 官方 SDK
 line-bot-sdk==3.19.1
 
-# 環境變數管理
+# ===== AI 對話核心 =====
+# Ollama AI 模型整合（本地模式）
+ollama==0.6.0
+
+# HTTP 客戶端（API 模式）
+httpx==0.28.1
+
+# ===== 資料庫連接 =====
+# MySQL 資料庫連接
+PyMySQL==1.1.2
+cryptography==46.0.2
+cffi==2.0.0
+pycparser==2.23
+
+# ===== 文字處理 =====
+# 簡繁轉換（保護寵物名字）
+opencc-python-reimplemented==0.1.7
+
+# ===== 環境變數管理 =====
+# 環境變數載入
 python-dotenv==1.1.1
 
-# AI 對話核心
-ollama
+# ===== HTTP 客戶端 =====
+# HTTP 請求處理
+httpx==0.28.1
+httpcore==1.0.9
+h11==0.16.0
+certifi==2025.10.5
+charset-normalizer==3.4.4
+idna==3.11
+urllib3==2.5.0
+requests==2.32.5
 
-# 資料庫連接
-pymysql
-cryptography
+# ===== 異步處理 =====
+# 異步 HTTP 處理
+aiohttp==3.13.0
+aiohappyeyeballs==2.6.1
+aiosignal==1.4.0
+anyio==4.11.0
+frozenlist==1.8.0
+multidict==6.7.0
+sniffio==1.3.1
+yarl==1.22.0
 
-# 文字處理（簡繁轉換）
-opencc-python-reimplemented
+# ===== 資料驗證 =====
+# Pydantic 資料驗證
+pydantic==2.12.2
+pydantic_core==2.41.4
+annotated-types==0.7.0
+
+# ===== 工具函式庫 =====
+# 日期時間處理
+python-dateutil==2.9.0.post0
+six==1.17.0
+
+# 類型檢查
+typing_extensions==4.15.0
+typing-inspection==0.4.2
+
+# 屬性處理
+attrs==25.4.0
+
+# 快取處理
+propcache==0.4.1
+
+# 包裝器
+wrapt==1.17.3
+
+# 枚舉處理
+aenum==3.1.16
+
+# 向後相容
+future==1.0.0
+Deprecated==1.2.18
+
+# ===== 開發工具 =====
+# 程式碼轉換工具（Flask 內建）
+# futurize, pasteurize 等工具已包含在 Flask 中

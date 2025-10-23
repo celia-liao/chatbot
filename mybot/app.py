@@ -42,7 +42,8 @@ try:
         clear_chat_history
     )
     from mybot.personalities import pet_personality_templates
-    from mybot.chatbot_ollama import build_system_prompt, chat_with_pet
+    from mybot.chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
+    from mybot.chatbot_api import build_system_prompt as build_system_prompt_api, chat_with_pet as chat_with_pet_api
 except ImportError:
     from db_utils import (
         get_pet_profile, 
@@ -52,7 +53,8 @@ except ImportError:
         clear_chat_history
     )
     from personalities import pet_personality_templates
-    from chatbot_ollama import build_system_prompt, chat_with_pet
+    from chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
+    from chatbot_api import build_system_prompt as build_system_prompt_api, chat_with_pet as chat_with_pet_api
 
 # ============================================
 # Flask 應用程式初始化
@@ -77,7 +79,11 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # 寵物設定（從環境變數讀取，預設為 1）
 PET_ID = int(os.getenv('PET_ID', 1))
+
+# AI 模式設定
+AI_MODE = os.getenv('AI_MODE', 'ollama')  # 預設使用 Ollama
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen:7b')
+QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen-flash')
 
 # ============================================
 # 對話記錄已改用資料庫儲存
@@ -106,6 +112,7 @@ def get_pet_system_prompt(pet_id=None):
     說明:
         從資料庫載入寵物資料並建立系統提示詞
         此函數會被多個使用者共用
+        根據 AI_MODE 選擇使用 Ollama 或 API 版本
     """
     try:
         # 如果沒有指定 pet_id，使用環境變數的預設值
@@ -117,14 +124,25 @@ def get_pet_system_prompt(pet_id=None):
         if not pet_profile:
             return None, None
         
-        system_prompt = build_system_prompt(
-            pet_name=pet_profile["name"],
-            breed=pet_profile["breed"],
-            persona=pet_personality_templates[pet_profile["persona_key"]],
-            life_data=pet_profile["lifeData"],
-            cover_slogan=pet_profile["cover_slogan"],
-            letter=pet_profile["letter"]
-        )
+        # 根據 AI_MODE 選擇對應的 build_system_prompt 函數
+        if AI_MODE == 'api':
+            system_prompt = build_system_prompt_api(
+                pet_name=pet_profile["name"],
+                breed=pet_profile["breed"],
+                persona=pet_personality_templates[pet_profile["persona_key"]],
+                life_data=pet_profile["lifeData"],
+                cover_slogan=pet_profile["cover_slogan"],
+                letter=pet_profile["letter"]
+            )
+        else:  # 預設使用 Ollama
+            system_prompt = build_system_prompt(
+                pet_name=pet_profile["name"],
+                breed=pet_profile["breed"],
+                persona=pet_personality_templates[pet_profile["persona_key"]],
+                life_data=pet_profile["lifeData"],
+                cover_slogan=pet_profile["cover_slogan"],
+                letter=pet_profile["letter"]
+            )
         
         return system_prompt, pet_profile["name"]
     except Exception as e:
@@ -360,14 +378,23 @@ LINE User ID:
                     # 先儲存使用者的訊息
                     save_chat_message(user_id, pet_id, 'user', user_message)
                     
-                    # 生成寵物回覆（傳入寵物名字以保護不被錯誤轉換）
-                    reply_text = chat_with_pet(
-                        system_prompt=system_prompt,
-                        user_input=user_message,
-                        history=history,
-                        model=OLLAMA_MODEL,
-                        pet_name=pet_name
-                    )
+                    # 根據 AI_MODE 選擇對應的 chat_with_pet 函數
+                    if AI_MODE == 'api':
+                        reply_text = chat_with_pet_api(
+                            system_prompt=system_prompt,
+                            user_input=user_message,
+                            history=history,
+                            model=QWEN_MODEL,
+                            pet_name=pet_name
+                        )
+                    else:  # 預設使用 Ollama
+                        reply_text = chat_with_pet_ollama(
+                            system_prompt=system_prompt,
+                            user_input=user_message,
+                            history=history,
+                            model=OLLAMA_MODEL,
+                            pet_name=pet_name
+                        )
                     
                     # 儲存寵物的回覆
                     save_chat_message(user_id, pet_id, 'assistant', reply_text)
@@ -438,7 +465,11 @@ def main():
     else:
         print("⚠️  無法載入寵物資料（請確認資料庫連線）")
     
-    print(f"\n🤖 使用的 AI 模型：{OLLAMA_MODEL}")
+    print(f"\n🤖 AI 模式：{AI_MODE}")
+    if AI_MODE == 'api':
+        print(f"🌐 使用的 API 模型：{QWEN_MODEL}")
+    else:
+        print(f"🏠 使用的本地模型：{OLLAMA_MODEL}")
     print(f"🐕 寵物 ID：{PET_ID}")
     
     # 啟動 Flask 應用
