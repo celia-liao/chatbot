@@ -63,5 +63,5 @@ scripts/
 # 完整流程
 sudo ./scripts/setup_systemd.sh
 ./scripts/deploy_to_server.sh
-python3 scripts/warmup_models.py
+python3 scripts/simple_warmup.py
 ```

@@ -49,7 +49,7 @@ pip install -r mybot/requirements.txt
 
 # 3. 預熱模型
 log_info "🔥 預熱 AI 模型..."
-python3 scripts/simple_warmup.py
+python3 scripts/force_warmup.py
 if [ $? -ne 0 ]; then
     log_warning "模型預熱失敗，但繼續部署"
 fi
