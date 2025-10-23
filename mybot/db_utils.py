@@ -8,6 +8,8 @@
 # ============================================
 
 import pymysql
+import requests
+import json
 
 # 支援兩種運行方式
 try:
@@ -34,7 +36,7 @@ def get_connection():
 
 def get_pet_profile(pet_id: int):
     """
-    從資料庫查詢寵物的完整資料
+    從 API 獲取寵物的完整資料
     
     參數:
         pet_id (int): 寵物的 ID
@@ -49,72 +51,61 @@ def get_pet_profile(pet_id: int):
                 "lifeData": list,      # 生命軌跡事件列表
                 "letter": str          # 主人寫的信件
             }
-        None: 如果找不到該寵物
+        None: 如果找不到該寵物或 API 請求失敗
     
     說明:
-        此函數會查詢三個資料表：
-        1. pets - 寵物基本資料
-        2. timeline_events - 寵物的生命軌跡事件
-        3. letters - 主人寫給寵物的信件
+        此函數會從 API 獲取寵物資料：
+        API 端點：https://test.ruru1211.xyz/api/pet-data-by-id/{pet_id}
         
-        資料查詢後會組合成統一格式，供 chatbot_ollama.py 使用
-    
-    資料庫結構:
-        - pets 表：pet_id, pet_name, slogan
-        - timeline_events 表：pet_id, age, event_title, event_description, is_visible, display_order
-        - letters 表：pet_id, letter_content
+        資料來源改為 API，不再直接查詢資料庫
     """
-    connection = get_connection()
     try:
-        with connection.cursor() as cursor:
-            # 1. 查詢寵物基本資料（明確指定欄位）
-            cursor.execute(
-                "SELECT pet_id, pet_name, breed, personality, slogan, line_user_id "
-                "FROM pets WHERE pet_id=%s", 
-                (pet_id,)
-            )
-            pet = cursor.fetchone()
+        # 從 API 獲取寵物資料
+        api_url = f"https://test.ruru1211.xyz/api/pet-data-by-id/{pet_id}"
+        print(f"[DEBUG] 從 API 獲取 pet_id={pet_id} 的資料：{api_url}")
+        
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()  # 如果 HTTP 狀態碼不是 200，會拋出異常
+        
+        data = response.json()
+        
+        # 檢查 API 回應是否成功
+        if not data.get("success", False):
+            print(f"[DEBUG] API 回傳失敗：{data}")
+            return None
             
-            # 除錯：顯示查詢到的寵物資料
-            print(f"[DEBUG] 查詢 pet_id={pet_id} 的資料：{pet}")
-            
-            # 如果找不到寵物，返回 None
-            if not pet:
-                print(f"[DEBUG] 找不到 pet_id={pet_id} 的資料")
-                return None
-
-            # 2. 查詢生命軌跡（只顯示 is_visible=1 的事件，按 display_order 排序）
-            cursor.execute(
-                "SELECT age, event_title as title, event_description as text "
-                "FROM timeline_events "
-                "WHERE pet_id=%s AND is_visible=1 "
-                "ORDER BY display_order", 
-                (pet_id,)
-            )
-            life = cursor.fetchall()
-
-            # 3. 查詢主人的信件
-            cursor.execute("SELECT letter_content as content FROM letters WHERE pet_id=%s", (pet_id,))
-            letter = cursor.fetchone()
-
-        # 組合並返回完整的寵物資料
+        pet_data = data.get("data")
+        if not pet_data:
+            print(f"[DEBUG] API 回傳的 data 為空")
+            return None
+        
+        # 除錯：顯示 API 回傳的資料
+        print(f"[DEBUG] API 回傳的寵物資料：{pet_data}")
+        
+        # 組合並返回完整的寵物資料（保持與原函數相同的格式）
         result = {
-            "name": pet["pet_name"],                           # 寵物名字
-            "breed": pet["breed"] if pet.get("breed") else "寵物",  # 寵物品種（從資料庫讀取）
-            "persona_key": pet["personality"] if pet.get("personality") else "friendly",  # 性格類型（從資料庫讀取）
-            "cover_slogan": pet["slogan"] if pet.get("slogan") else "",  # 主人的愛意標語
-            "lifeData": life,                                  # 生命軌跡事件列表
-            "letter": letter["content"] if letter else ""      # 主人的信件內容
+            "name": pet_data.get("name", ""),                           # 寵物名字
+            "breed": pet_data.get("breed", "寵物"),                      # 寵物品種
+            "persona_key": pet_data.get("persona_key", "friendly"),     # 性格類型
+            "cover_slogan": pet_data.get("cover_slogan", ""),           # 主人的愛意標語
+            "lifeData": pet_data.get("lifeData", []),                   # 生命軌跡事件列表
+            "letter": pet_data.get("letter", "")                        # 主人的信件內容
         }
         
         # 除錯：顯示最終返回的資料
         print(f"[DEBUG] 返回的寵物資料 - name: {result['name']}, breed: {result['breed']}, persona: {result['persona_key']}")
         
         return result
-
-    finally:
-        # 無論成功或失敗，都要關閉資料庫連接
-        connection.close()
+        
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] API 請求失敗: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] API 回傳的 JSON 格式錯誤: {e}")
+        return None
+    except Exception as e:
+        print(f"[ERROR] 獲取寵物資料時發生錯誤: {e}")
+        return None
 
 
 def get_pet_id_by_line_user(line_user_id: str):
@@ -128,35 +119,52 @@ def get_pet_id_by_line_user(line_user_id: str):
         int: 對應的寵物 ID，如果找不到則返回 None
     
     說明:
-        從 pets 表中查詢 line_user_id 對應的寵物
-        如果使用者尚未設定，返回 None
+        此函數會從 API 獲取 LINE 使用者對應的寵物 ID：
+        API 端點：https://test.ruru1211.xyz/api/pet-id-by-line-user/{line_user_id}
+        
+        資料來源改為 API，不再直接查詢資料庫
     """
-    connection = get_connection()
     try:
-        with connection.cursor() as cursor:
-            # 查詢時可能欄位名稱是 id 或 pet_id，都試試
-            cursor.execute(
-                "SELECT pet_id, pet_name, breed FROM pets WHERE line_user_id=%s", 
-                (line_user_id,)
-            )
-            result = cursor.fetchone()
+        # 從 API 獲取 LINE 使用者對應的寵物 ID
+        api_url = f"https://test.ruru1211.xyz/api/pet-id-by-line-user/{line_user_id}"
+        print(f"[DEBUG] 從 API 獲取 line_user_id={line_user_id} 對應的寵物 ID：{api_url}")
+        
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()  # 如果 HTTP 狀態碼不是 200，會拋出異常
+        
+        data = response.json()
+        
+        # 檢查 API 回應是否成功
+        if not data.get("success", False):
+            print(f"[DEBUG] API 回傳失敗：{data}")
+            return None
             
-            # 除錯：顯示查詢結果
-            print(f"[DEBUG] 查詢 line_user_id={line_user_id} 的結果：{result}")
-            
-            # 優先使用 pet_id，如果沒有則用 id
-            if result:
-                pet_id = result.get("pet_id") or result.get("id")
-                print(f"[DEBUG] 找到 pet_id={pet_id}, 寵物名稱={result.get('pet_name')}, 品種={result.get('breed')}")
-                return pet_id
-            else:
-                print(f"[DEBUG] 找不到 line_user_id={line_user_id} 的寵物綁定")
-                return None
-    except Exception as e:
-        print(f"[ERROR] 查詢使用者寵物對應失敗: {e}")
+        pet_data = data.get("data")
+        if not pet_data:
+            print(f"[DEBUG] API 回傳的 data 為空")
+            return None
+        
+        # 除錯：顯示 API 回傳的資料
+        print(f"[DEBUG] API 回傳的寵物資料：{pet_data}")
+        
+        # 取得寵物 ID
+        pet_id = pet_data.get("pet_id")
+        if pet_id is not None:
+            print(f"[DEBUG] 找到 pet_id={pet_id}, 寵物名稱={pet_data.get('pet_name')}")
+            return pet_id
+        else:
+            print(f"[DEBUG] API 回傳的資料中沒有 pet_id")
+            return None
+        
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] API 請求失敗: {e}")
         return None
-    finally:
-        connection.close()
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] API 回傳的 JSON 格式錯誤: {e}")
+        return None
+    except Exception as e:
+        print(f"[ERROR] 獲取寵物 ID 時發生錯誤: {e}")
+        return None
 
 
 # ============================================
