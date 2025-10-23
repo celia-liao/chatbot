@@ -8,6 +8,7 @@
 # ============================================
 
 import os
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, request, abort, jsonify
@@ -29,6 +30,23 @@ from linebot.v3.webhooks import (
 
 # 載入環境變數（從 .env 檔案）
 load_dotenv()
+
+# ============================================
+# Logging 設定
+# ============================================
+
+# 設定 logging 格式
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # 輸出到控制台
+        logging.FileHandler('logs/app.log', encoding='utf-8')  # 輸出到檔案
+    ]
+)
+
+# 建立 logger
+logger = logging.getLogger('pet_chatbot')
 
 # 支援兩種運行方式：
 # 1. 作為套件運行（CloudPanel 部署）：from mybot.xxx import
@@ -84,6 +102,15 @@ PET_ID = int(os.getenv('PET_ID', 1))
 AI_MODE = os.getenv('AI_MODE', 'ollama')  # 預設使用 Ollama
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen:7b')
 QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen-flash')
+
+# 記錄 AI 模式設定
+logger.info(f"🤖 AI 模式設定: {AI_MODE}")
+if AI_MODE == 'api':
+    logger.info(f"🌐 使用 API 模式 - 模型: {QWEN_MODEL}")
+    logger.info(f"🔑 API Key 狀態: {'已設定' if os.getenv('QWEN_API_KEY') and os.getenv('QWEN_API_KEY') != 'your_qwen_api_key' else '未設定'}")
+else:
+    logger.info(f"🏠 使用本地 Ollama 模式 - 模型: {OLLAMA_MODEL}")
+    logger.info("💡 提示: 如需切換到 API 模式，請設定 AI_MODE=api 和 QWEN_API_KEY")
 
 # ============================================
 # 對話記錄已改用資料庫儲存
@@ -379,7 +406,11 @@ LINE User ID:
                     save_chat_message(user_id, pet_id, 'user', user_message)
                     
                     # 根據 AI_MODE 選擇對應的 chat_with_pet 函數
+                    logger.info(f"💬 處理對話 - 用戶: {user_id}, 模式: {AI_MODE}")
+                    logger.info(f"📝 輸入訊息: {user_message}")
+                    
                     if AI_MODE == 'api':
+                        logger.info(f"🌐 使用 API 模式 - 模型: {QWEN_MODEL}")
                         reply_text = chat_with_pet_api(
                             system_prompt=system_prompt,
                             user_input=user_message,
@@ -387,7 +418,9 @@ LINE User ID:
                             model=QWEN_MODEL,
                             pet_name=pet_name
                         )
+                        logger.info("✅ API 模式回應完成")
                     else:  # 預設使用 Ollama
+                        logger.info(f"🏠 使用 Ollama 模式 - 模型: {OLLAMA_MODEL}")
                         reply_text = chat_with_pet_ollama(
                             system_prompt=system_prompt,
                             user_input=user_message,
@@ -395,6 +428,7 @@ LINE User ID:
                             model=OLLAMA_MODEL,
                             pet_name=pet_name
                         )
+                        logger.info("✅ Ollama 模式回應完成")
                     
                     # 儲存寵物的回覆
                     save_chat_message(user_id, pet_id, 'assistant', reply_text)
@@ -468,9 +502,24 @@ def main():
     print(f"\n🤖 AI 模式：{AI_MODE}")
     if AI_MODE == 'api':
         print(f"🌐 使用的 API 模型：{QWEN_MODEL}")
+        api_key_status = "已設定" if os.getenv('QWEN_API_KEY') and os.getenv('QWEN_API_KEY') != 'your_qwen_api_key' else "未設定"
+        print(f"🔑 API Key 狀態：{api_key_status}")
+        if api_key_status == "未設定":
+            print("⚠️  警告：API Key 未設定，API 模式可能無法正常工作")
     else:
         print(f"🏠 使用的本地模型：{OLLAMA_MODEL}")
+        print("💡 提示：如需切換到 API 模式，請設定 AI_MODE=api 和 QWEN_API_KEY")
     print(f"🐕 寵物 ID：{PET_ID}")
+    
+    # 記錄啟動資訊到日誌
+    logger.info("🚀 寵物聊天機器人啟動完成")
+    logger.info(f"🤖 AI 模式: {AI_MODE}")
+    if AI_MODE == 'api':
+        logger.info(f"🌐 API 模型: {QWEN_MODEL}")
+        logger.info(f"🔑 API Key 狀態: {api_key_status}")
+    else:
+        logger.info(f"🏠 Ollama 模型: {OLLAMA_MODEL}")
+    logger.info(f"🐕 寵物 ID: {PET_ID}")
     
     # 啟動 Flask 應用
     port = int(os.getenv('PORT', 8000))

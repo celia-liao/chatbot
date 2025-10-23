@@ -18,7 +18,18 @@ DB_NAME=lbblacktech-laravel
 # ===== 應用程式設定 =====
 PORT=8090
 PET_ID=1
+
+# ===== AI 模型設定 =====
+# 選擇使用本地 Ollama 或 API
+AI_MODE=api  # 選項：ollama, api
+
+# Ollama 設定（當 AI_MODE=ollama 時使用）
 OLLAMA_MODEL=qwen:7b
+
+# Qwen Flash API 設定（當 AI_MODE=api 時使用）
+QWEN_API_KEY=your_qwen_api_key
+QWEN_API_URL=https://api.qwen.com/v1/chat/completions
+QWEN_MODEL=qwen-flash
 
 # ===== Flask 環境 =====
 FLASK_ENV=production
