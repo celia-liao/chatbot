@@ -11,7 +11,7 @@ import ollama
 from opencc import OpenCC
 
 # 初始化簡繁轉換器（Simple to Traditional）
-cc = OpenCC('s2t')  # 簡體轉繁體
+cc = OpenCC('s2tw.json')  # 簡體轉繁體
 
 def convert_simple_to_traditional(text: str, protected_words: list = None) -> str:
     """
@@ -76,16 +76,17 @@ def build_system_prompt(pet_name, persona, life_data=None, cover_slogan=None, le
     # 建立生命軌跡文字
     life_memories = ""
     if life_data:
-        life_memories = "\n        我的生命回憶：\n"
+        life_memories = "\n        我的生命回憶（這些都是我真實經歷過的，要記住並使用）：\n"
         for event in life_data:
             age = event.get('age', '')
             title = event.get('title', '')
             text = event.get('text', '')
             
+            # 為所有經歷添加記憶標記，讓AI知道這些是真實經歷
             life_memories += f"        - 【{age}】{title}"
             if text:
                 life_memories += f"：{text}"
-            life_memories += "\n"
+            life_memories += " ← 這是我真實經歷過的事情！\n"
     
     # 建立主人信件文字
     owner_letter = ""

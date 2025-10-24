@@ -13,7 +13,7 @@ import os
 from opencc import OpenCC
 
 # 初始化簡繁轉換器（Simple to Traditional）
-cc = OpenCC('s2t')  # 簡體轉繁體
+cc = OpenCC('s2tw.json')  # 簡體轉繁體
 
 def convert_simple_to_traditional(text: str, protected_words: list = None) -> str:
     """
