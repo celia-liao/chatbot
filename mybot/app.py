@@ -399,17 +399,19 @@ LINE User ID:
 • 輸入「愛寵小語」獲取專屬小語
 
 快來跟我聊天吧！～"""
-                    
+                # 愛寵小語功能
+                # 調用 API: https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}
+                # 回覆圖片和文字
                 elif user_message.lower() in ['愛寵小語', '小語', '寵物小語']:
-                    # 愛寵小語功能
                     try:
                         import requests
+                        from linebot.v3.messaging import FlexMessage, FlexContainer
+
                         api_url = f"https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}"
                         app.logger.info(f"🔍 調用愛寵小語 API: {api_url}")
                         
                         response = requests.get(api_url, timeout=10)
                         response.raise_for_status()
-                        
                         data = response.json()
                         
                         if data.get('success', False):
@@ -420,67 +422,70 @@ LINE User ID:
                             
                             app.logger.info(f"✅ 獲取愛寵小語成功: {whisper_text[:50]}...")
                             
-                            # 準備回覆訊息
                             if whisper_image and whisper_text:
-                                # 有圖片和文字，使用 Flex Message 同時顯示圖片和文字
-                                from linebot.v3.messaging import FlexMessage, FlexContainer
-                                
-                                flex_message = {
-                                    "type": "bubble",
-                                    "body": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "image",
-                                                "url": whisper_image,
-                                                "size": "full",
-                                                "aspectMode": "cover",
-                                                "aspectRatio": "1:1"
-                                            },
-                                            {
-                                                "type": "text",
-                                                "text": f"💝 愛寵小語：\n\n{whisper_text}",
-                                                "wrap": True,
-                                                "size": "md",
-                                                "margin": "md"
-                                            }
-                                        ]
-                                    }
-                                }
-                                
-                                with ApiClient(configuration) as api_client:
-                                    line_bot_api = MessagingApi(api_client)
-                                    
-                                    line_bot_api.reply_message_with_http_info(
-                                        ReplyMessageRequest(
-                                            reply_token=event.reply_token,
-                                            messages=[FlexMessage(alt_text="愛寵小語", contents=flex_message)]
+                                # 建立 FlexMessage
+                                flex_message = FlexMessage(
+                                    alt_text="愛寵小語",
+                                    contents=FlexContainer.from_dict({
+                                        "type": "bubble",
+                                        "body": {
+                                            "type": "box",
+                                            "layout": "vertical",
+                                            "contents": [
+                                                {
+                                                    "type": "image",
+                                                    "url": whisper_image,
+                                                    "size": "full",
+                                                    "aspectMode": "cover",
+                                                    "aspectRatio": "1:1"
+                                                },
+                                                {
+                                                    "type": "text",
+                                                    "text": f"💝 愛寵小語：\n\n{whisper_text}",
+                                                    "wrap": True,
+                                                    "size": "md",
+                                                    "margin": "md"
+                                                }
+                                            ]
+                                        }
+                                    })
+                                )
+
+                                try:
+                                    with ApiClient(configuration) as api_client:
+                                        line_bot_api = MessagingApi(api_client)
+                                        line_bot_api.reply_message_with_http_info(
+                                            ReplyMessageRequest(
+                                                reply_token=event.reply_token,
+                                                messages=[flex_message]
+                                            )
                                         )
-                                    )
-                                
-                                # 記錄愛寵小語到資料庫
+                                except Exception as e:
+                                    # reply_token 已失效，用 push_message 補救
+                                    app.logger.warning(f"reply_token 失效，改用 push_message: {e}")
+                                    with ApiClient(configuration) as api_client:
+                                        line_bot_api = MessagingApi(api_client)
+                                        line_bot_api.push_message(
+                                            to=user_id,
+                                            messages=[flex_message]
+                                        )
+
+                                # 存入資料庫
                                 save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
                                 return
-                                
+
                             elif whisper_text:
-                                # 只有文字
                                 reply_text = f"💝 愛寵小語：\n\n{whisper_text}"
-                                
-                                # 記錄愛寵小語到資料庫
                                 save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
-                                
                             else:
                                 reply_text = "嗚...暫時沒有小語可以分享呢～"
-                                
                         else:
                             reply_text = "嗚...現在沒有小語可以分享呢～"
-                            
+
                     except Exception as e:
                         app.logger.error(f"❌ 愛寵小語 API 調用失敗: {e}")
                         reply_text = "嗚...現在無法獲取小語，請稍後再試～"
-                    
-                    
+
                 else:
                     # 一般對話 - 從資料庫讀取對話歷史
                     history = get_chat_history(user_id, pet_id, limit=8)
