@@ -11,7 +11,7 @@ import ollama
 from opencc import OpenCC
 
 # 初始化簡繁轉換器（Simple to Traditional）
-cc = OpenCC('s2tw.json')  # 簡體轉繁體
+cc = OpenCC('s2t')  # 簡體轉繁體（標準配置，最穩定）
 
 def convert_simple_to_traditional(text: str, protected_words: list = None) -> str:
     """
@@ -29,16 +29,41 @@ def convert_simple_to_traditional(text: str, protected_words: list = None) -> st
         確保 Qwen 模型輸出的簡體中文能被正確顯示為繁體
         保護特定詞彙（如寵物名字）避免被錯誤轉換（例如「里長」→「裏長」）
     """
-    if not protected_words:
+    if not text:
+        return text
+    
+    # 常見需要保護的詞彙（避免錯誤轉換）
+    common_protected_words = [
+        "起床", "起床了", "起床時間", "早上起床", "起床吃飯", "起床運動",
+        "起床看書", "起床工作", "起床學習", "起床玩耍", "起床洗澡",
+        "起床刷牙", "起床穿衣服", "起床整理", "起床準備", "起床出門",
+        "吃飯", "睡覺", "洗澡", "刷牙", "穿衣服", "整理", "準備", "出門",
+        "回家", "工作", "學習", "看書", "運動", "玩耍", "休息", "放鬆",
+        "開心", "快樂", "高興", "興奮", "緊張", "擔心", "害怕", "勇敢",
+        "聰明", "可愛", "漂亮", "帥氣", "溫柔", "體貼", "善良", "友好",
+        "主人", "朋友", "家人", "爸爸", "媽媽", "哥哥", "姐姐", "弟弟", "妹妹",
+        "狗狗", "貓貓", "寵物", "動物", "玩具", "食物", "零食", "骨頭", "球球"
+    ]
+    
+    # 合併用戶指定的保護詞彙和常見保護詞彙
+    all_protected_words = []
+    if protected_words:
+        all_protected_words.extend(protected_words)
+    all_protected_words.extend(common_protected_words)
+    
+    # 去重並過濾空值
+    unique_protected_words = list(set([word for word in all_protected_words if word and word.strip()]))
+    
+    if not unique_protected_words:
         return cc.convert(text)
     
     # 使用臨時標記保護特定詞彙
     protected_map = {}
     temp_text = text
     
-    for i, word in enumerate(protected_words):
-        if word and word in temp_text:
-            placeholder = f"__PROTECTED_{i}__"
+    for i, word in enumerate(unique_protected_words):
+        if word in temp_text:
+            placeholder = f"__PROTECTED_{i}_{hash(word)}__"
             protected_map[placeholder] = word
             temp_text = temp_text.replace(word, placeholder)
     
@@ -48,6 +73,19 @@ def convert_simple_to_traditional(text: str, protected_words: list = None) -> st
     # 還原保護的詞彙
     for placeholder, original_word in protected_map.items():
         converted_text = converted_text.replace(placeholder, original_word)
+    
+    # 後處理：修正常見的錯誤轉換
+    correction_rules = {
+        '牀': '床',
+        '起牀': '起床',
+        '裏': '裡',
+        '裏面': '裡面',
+        '裏頭': '裡頭',
+        '裏邊': '裡邊'
+    }
+    
+    for wrong, correct in correction_rules.items():
+        converted_text = converted_text.replace(wrong, correct)
     
     return converted_text
 
