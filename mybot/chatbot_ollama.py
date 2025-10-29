@@ -114,20 +114,54 @@ def build_system_prompt(pet_name, persona, life_data=None, cover_slogan=None, le
         3. 寵物的生命經歷和與主人的回憶
         4. 如何用寵物的視角思考和回覆
     """
-    # 建立生命軌跡文字
+    # 建立生命軌跡文字（結構化格式）
     life_memories = ""
     if life_data:
-        life_memories = "\n        我的生命回憶（這些都是我真實經歷過的，要記住並使用）：\n"
-        for event in life_data:
+        life_memories = "\n        📸 生命軌跡記憶（請不要混淆不同事件）：\n"
+        
+        # 為每個事件生成唯一編號和結構化格式
+        for i, event in enumerate(life_data, 1):
             age = event.get('age', '')
             title = event.get('title', '')
             text = event.get('text', '')
             
-            # 為所有經歷添加記憶標記，讓AI知道這些是真實經歷
-            life_memories += f"        - 【{age}】{title}"
-            if text:
-                life_memories += f"：{text}"
-            life_memories += " ← 這是我真實經歷過的事情！\n"
+            # 清理 HTML 標籤
+            clean_text = text.replace('<br>', ' ') if text else ''
+            
+            life_memories += f"        [EventID: L{i}] 年齡：{age}\n"
+            life_memories += f"        標題：{title}\n"
+            if clean_text:
+                life_memories += f"        描述：{clean_text}\n"
+            life_memories += "\n"
+        
+        # 添加記憶檢索規則
+        life_memories += "        ⚠️ 記憶檢索規則：\n"
+        life_memories += "        - 當主人詢問「還記得 X 嗎？」時，只能根據生命軌跡記憶中對應的事件回覆\n"
+        
+        # 為每個事件生成具體的檢索規則
+        for i, event in enumerate(life_data, 1):
+            title = event.get('title', '')
+            age = event.get('age', '')
+            
+            # 動態提取標題中的關鍵詞來建立檢索規則
+            # 將標題分解為可能的關鍵詞
+            keywords = []
+            if title:
+                # 提取標題中的主要詞彙
+                import re
+                # 移除常見的連接詞和助詞
+                clean_title = re.sub(r'[的、了、在、和、與、到、去、帶、讓、給]', ' ', title)
+                words = clean_title.split()
+                keywords = [word.strip() for word in words if len(word.strip()) > 1]
+            
+            if keywords:
+                keyword_str = '」或「'.join(keywords)
+                life_memories += f"        - 如果問題包含「{keyword_str}」，只能使用 EventID: L{i}\n"
+            else:
+                life_memories += f"        - 如果問題提到「{title}」相關內容，只能使用 EventID: L{i}\n"
+        
+        life_memories += "        - 絕對不要同時引用不同事件\n"
+        life_memories += "        - 每個事件都是獨立的，有特定的時間、地點和情境\n"
     
     # 建立主人信件文字
     owner_letter = ""
@@ -190,7 +224,7 @@ def build_system_prompt(pet_name, persona, life_data=None, cover_slogan=None, le
         4. 展現對主人的愛和依賴
         5. 可以撒嬌、表達需求、分享感受
         6. 記住：你是寵物，說話要可愛簡單！
-        7. 【重要】回覆要簡短，最多1-2句話（20-40字以內）
+        7. 【重要】回覆要簡短，最多1-2句話（20字以內）
         8. 【重要】不要說教或長篇大論，像真正的寵物一樣簡潔回應
     """
 
