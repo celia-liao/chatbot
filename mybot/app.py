@@ -411,12 +411,18 @@ LINE User ID:
                         response.raise_for_status()
                         
                         data = response.json()
+                        app.logger.info(f"🔍 API 回傳資料: {data}")
                         
                         if data.get('success', False):
                             whisper_data = data.get('data', {})
-                            whisper_text = whisper_data.get('text', '')
-                            whisper_image = whisper_data.get('image', '')
+                            whisper_info = whisper_data.get('whisper', {})
+                            whisper_text = whisper_info.get('content', '')
+                            whisper_image = whisper_data.get('pet_image', '')
                             
+                            app.logger.info(f"🔍 解析結果 - whisper_data: {whisper_data}")
+                            app.logger.info(f"🔍 解析結果 - whisper_info: {whisper_info}")
+                            app.logger.info(f"🔍 解析結果 - whisper_text: '{whisper_text}'")
+                            app.logger.info(f"🔍 解析結果 - whisper_image: '{whisper_image}'")
                             app.logger.info(f"✅ 獲取愛寵小語成功: {whisper_text[:50]}...")
                             
                             # 準備回覆訊息
