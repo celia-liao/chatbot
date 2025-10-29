@@ -21,7 +21,8 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
-    TextMessage
+    TextMessage,
+    ImageMessage
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -395,8 +396,72 @@ LINE User ID:
 • 輸入「清除」可以重置對話記錄
 • 輸入「說明」查看此訊息
 • 輸入「我的ID」查看你的使用者ID
+• 輸入「愛寵小語」獲取專屬小語
 
 快來跟我聊天吧！～"""
+                    
+                elif user_message.lower() in ['愛寵小語', '小語', '寵物小語']:
+                    # 愛寵小語功能
+                    try:
+                        import requests
+                        api_url = f"https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}"
+                        app.logger.info(f"🔍 調用愛寵小語 API: {api_url}")
+                        
+                        response = requests.get(api_url, timeout=10)
+                        response.raise_for_status()
+                        
+                        data = response.json()
+                        
+                        if data.get('success', False):
+                            whisper_data = data.get('data', {})
+                            whisper_text = whisper_data.get('text', '')
+                            whisper_image = whisper_data.get('image', '')
+                            
+                            app.logger.info(f"✅ 獲取愛寵小語成功: {whisper_text[:50]}...")
+                            
+                            # 準備回覆訊息
+                            if whisper_image and whisper_text:
+                                # 有圖片和文字，先發送圖片再發送文字
+                                with ApiClient(configuration) as api_client:
+                                    line_bot_api = MessagingApi(api_client)
+                                    
+                                    # 先發送圖片
+                                    line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[ImageMessage(original_content_url=whisper_image, preview_image_url=whisper_image)]
+                                        )
+                                    )
+                                    
+                                    # 再發送文字
+                                    line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[TextMessage(text=whisper_text)]
+                                        )
+                                    )
+                                
+                                # 記錄愛寵小語到資料庫
+                                save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
+                                return
+                                
+                            elif whisper_text:
+                                # 只有文字
+                                reply_text = f"💝 愛寵小語：\n\n{whisper_text}"
+                                
+                                # 記錄愛寵小語到資料庫
+                                save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
+                                
+                            else:
+                                reply_text = "嗚...暫時沒有小語可以分享呢～"
+                                
+                        else:
+                            reply_text = "嗚...現在沒有小語可以分享呢～"
+                            
+                    except Exception as e:
+                        app.logger.error(f"❌ 愛寵小語 API 調用失敗: {e}")
+                        reply_text = "嗚...現在無法獲取小語，請稍後再試～"
+                    
                     
                 else:
                     # 一般對話 - 從資料庫讀取對話歷史
@@ -460,6 +525,8 @@ LINE User ID:
                 )
         except:
             pass
+
+
 
 
 # ============================================
