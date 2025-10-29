@@ -411,7 +411,6 @@ LINE User ID:
                         response.raise_for_status()
                         
                         data = response.json()
-                        app.logger.info(f"🔍 API 回傳資料: {data}")
                         
                         if data.get('success', False):
                             whisper_data = data.get('data', {})
@@ -419,31 +418,44 @@ LINE User ID:
                             whisper_text = whisper_info.get('content', '')
                             whisper_image = whisper_data.get('pet_image', '')
                             
-                            app.logger.info(f"🔍 解析結果 - whisper_data: {whisper_data}")
-                            app.logger.info(f"🔍 解析結果 - whisper_info: {whisper_info}")
-                            app.logger.info(f"🔍 解析結果 - whisper_text: '{whisper_text}'")
-                            app.logger.info(f"🔍 解析結果 - whisper_image: '{whisper_image}'")
                             app.logger.info(f"✅ 獲取愛寵小語成功: {whisper_text[:50]}...")
                             
                             # 準備回覆訊息
                             if whisper_image and whisper_text:
-                                # 有圖片和文字，先發送圖片再發送文字
+                                # 有圖片和文字，使用 Flex Message 同時顯示圖片和文字
+                                from linebot.v3.messaging import FlexMessage, FlexContainer
+                                
+                                flex_message = {
+                                    "type": "bubble",
+                                    "body": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "image",
+                                                "url": whisper_image,
+                                                "size": "full",
+                                                "aspectMode": "cover",
+                                                "aspectRatio": "1:1"
+                                            },
+                                            {
+                                                "type": "text",
+                                                "text": f"💝 愛寵小語：\n\n{whisper_text}",
+                                                "wrap": True,
+                                                "size": "md",
+                                                "margin": "md"
+                                            }
+                                        ]
+                                    }
+                                }
+                                
                                 with ApiClient(configuration) as api_client:
                                     line_bot_api = MessagingApi(api_client)
                                     
-                                    # 先發送圖片
                                     line_bot_api.reply_message_with_http_info(
                                         ReplyMessageRequest(
                                             reply_token=event.reply_token,
-                                            messages=[ImageMessage(original_content_url=whisper_image, preview_image_url=whisper_image)]
-                                        )
-                                    )
-                                    
-                                    # 再發送文字
-                                    line_bot_api.reply_message_with_http_info(
-                                        ReplyMessageRequest(
-                                            reply_token=event.reply_token,
-                                            messages=[TextMessage(text=whisper_text)]
+                                            messages=[FlexMessage(alt_text="愛寵小語", contents=flex_message)]
                                         )
                                     )
                                 
