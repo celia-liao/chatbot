@@ -439,13 +439,13 @@ LINE User ID:
                                                     "aspectMode": "cover",
                                                     "aspectRatio": "1:1"
                                                 },
-                                                {
-                                                    "type": "text",
-                                                    "text": f"💝 愛寵小語：\n\n{whisper_text}",
-                                                    "wrap": True,
-                                                    "size": "md",
-                                                    "margin": "md"
-                                                }
+                                                 {
+                                                     "type": "text",
+                                                     "text": f"{pet_name}：\n\n{whisper_text}",
+                                                     "wrap": True,
+                                                     "size": "md",
+                                                     "margin": "md"
+                                                 }
                                             ]
                                         }
                                     })
@@ -470,13 +470,10 @@ LINE User ID:
                                             messages=[flex_message]
                                         )
 
-                                # 存入資料庫
-                                save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
                                 return
 
                             elif whisper_text:
-                                reply_text = f"💝 愛寵小語：\n\n{whisper_text}"
-                                save_chat_message(user_id, pet_id, 'assistant', f"愛寵小語: {whisper_text}")
+                                reply_text = f"{pet_name}：\n\n{whisper_text}"
                             else:
                                 reply_text = "嗚...暫時沒有小語可以分享呢～"
                         else:
