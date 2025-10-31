@@ -40,6 +40,10 @@ pycparser==2.23
 # 簡繁轉換（保護寵物名字）
 opencc-python-reimplemented==0.1.7
 
+# ===== 圖片處理 =====
+# Pillow 圖片處理（占卜卡生成）
+Pillow>=10.0.0
+
 # ===== 環境變數管理 =====
 # 環境變數載入
 python-dotenv==1.1.1

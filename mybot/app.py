@@ -9,9 +9,13 @@
 
 import os
 import logging
+import uuid
+import random
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, request, abort, jsonify
+from PIL import Image, ImageDraw, ImageFont
 
 # LINE Bot SDK v3
 from linebot.v3 import WebhookHandler
@@ -21,6 +25,7 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
+    PushMessageRequest,
     TextMessage,
     ImageMessage
 )
@@ -127,6 +132,329 @@ else:
 # 核心功能函數
 # ============================================
 
+def generate_fortune_card(pet_id: int) -> str:
+    """
+    生成寵物占卜卡
+    
+    參數:
+        pet_id (int): 寵物 ID
+    
+    返回:
+        str: 生成的占卜卡圖片外部 URL，如果失敗則返回 None
+    
+    功能:
+        1. 呼叫 A 專案 API 獲取寵物資料
+        2. 下載寵物頭像圖片
+        3. 從本地隨機選擇背景圖片
+        4. 合成占卜卡（頭像貼在指定位置）
+        5. 添加文字（寵物名稱 + "今天好運旺旺！"）
+        6. 保存到 output 目錄
+        7. 返回外部 URL
+    """
+    try:
+        # 1. 確保 output 目錄存在
+        output_dir = './output'
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 2. 呼叫 A 專案 API 獲取寵物資料
+        api_url = f"https://test.ruru1211.xyz/api/fortune-card/random?pet_id={pet_id}"
+        app.logger.info(f"🔮 調用占卜卡 API: {api_url}")
+        
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        
+        # 確保使用 UTF-8 編碼解析 JSON
+        response.encoding = 'utf-8'
+        data = response.json()
+        
+        if not data.get('success', False):
+            app.logger.error(f"❌ API 返回失敗: {data}")
+            return None
+        
+        fortune_data = data.get('data', {})
+        pet_name = fortune_data.get('pet_name', '')
+        pet_image_url = fortune_data.get('pet_image', '')
+        cover_image_url = fortune_data.get('cover_image', '')
+        
+        if not pet_name or not pet_image_url:
+            app.logger.error(f"❌ API 數據不完整: {fortune_data}")
+            return None
+        
+        # 確保 pet_name 是正確的字串格式
+        if isinstance(pet_name, bytes):
+            pet_name = pet_name.decode('utf-8')
+        pet_name = str(pet_name).strip()
+        
+        app.logger.info(f"✅ 獲取寵物資料成功: {pet_name} (編碼: {type(pet_name)}), 頭像: {pet_image_url}")
+        
+        # 3. 下載寵物頭像圖片
+        pet_image_response = requests.get(pet_image_url, timeout=10)
+        pet_image_response.raise_for_status()
+        
+        # 保存臨時頭像文件
+        temp_pet_path = f'/tmp/pet_{uuid.uuid4()}.png'
+        with open(temp_pet_path, 'wb') as f:
+            f.write(pet_image_response.content)
+        
+        # 3. 處理寵物頭像 - 調整為較小尺寸放在圓框內
+        pet_image = Image.open(temp_pet_path).convert('RGBA')
+        
+        # 創建背景層（600x1000，透明背景）
+        pet_image_bg = Image.new('RGBA', (600, 1000), (255, 255, 255, 0))
+        
+        # 將寵物頭像調整為較小尺寸（約 280x280，適合圓框顯示）
+        # 保持寬高比，使用 fit 模式
+        target_size = 280
+        pet_ratio = pet_image.width / pet_image.height
+        
+        if pet_ratio >= 1:
+            # 圖片較寬或正方形，以寬度為準
+            new_width = target_size
+            new_height = int(target_size / pet_ratio)
+        else:
+            # 圖片較高，以高度為準
+            new_height = target_size
+            new_width = int(target_size * pet_ratio)
+        
+        resized_pet = pet_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # 將寵物頭像放在背景中心位置（圓框通常在卡片中上部）
+        x_offset = (600 - new_width) // 2
+        y_offset = 240  # 垂直位置，與原本的圓框位置對齊
+        
+        pet_image_bg.paste(resized_pet, (x_offset, y_offset), resized_pet)
+        
+        app.logger.info(f"✅ 寵物頭像處理完成: 原始尺寸 {pet_image.size}, 調整後 {resized_pet.size}, 位置 ({x_offset}, {y_offset})")
+        
+        # 4. 處理 cover_image - 作為覆蓋層
+        if cover_image_url:
+            # 如果有 API 提供的覆蓋圖片，使用它
+            cover_response = requests.get(cover_image_url, timeout=10)
+            cover_response.raise_for_status()
+            
+            temp_bg_path = f'/tmp/bg_{uuid.uuid4()}.png'
+            with open(temp_bg_path, 'wb') as f:
+                f.write(cover_response.content)
+            
+            cover_image = Image.open(temp_bg_path).convert('RGBA')
+            # 調整覆蓋圖片大小為 600x1000
+            cover_image = cover_image.resize((600, 1000), Image.Resampling.LANCZOS)
+            
+            # 清理臨時文件
+            os.remove(temp_bg_path)
+        else:
+            # 從本地隨機選擇覆蓋圖片
+            bg_dir = './assets/images/fortune_bg'
+            if not os.path.exists(bg_dir):
+                app.logger.error(f"❌ 覆蓋圖片目錄不存在: {bg_dir}")
+                os.remove(temp_pet_path)
+                return None
+            
+            bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if not bg_files:
+                app.logger.error(f"❌ 覆蓋圖片目錄為空: {bg_dir}")
+                os.remove(temp_pet_path)
+                return None
+            
+            # 隨機選擇一張覆蓋圖片
+            random_bg = random.choice(bg_files)
+            bg_path = os.path.join(bg_dir, random_bg)
+            app.logger.info(f"🎲 隨機選擇覆蓋圖片: {random_bg}")
+            
+            cover_image = Image.open(bg_path).convert('RGBA')
+            # 調整覆蓋圖片大小為 600x1000
+            cover_image = cover_image.resize((600, 1000), Image.Resampling.LANCZOS)
+        
+        app.logger.info(f"✅ 覆蓋圖片處理完成: {cover_image.size}, 模式: {cover_image.mode}")
+        
+        # 檢查 cover_image 是否有透明度（檢查 alpha 通道）
+        has_transparency = False
+        if cover_image.mode == 'RGBA':
+            # 檢查是否有透明像素
+            alpha_channel = cover_image.split()[3]
+            has_transparency = any(pixel < 255 for pixel in alpha_channel.getdata())
+            app.logger.info(f"🔍 cover_image 透明度檢測: {has_transparency}")
+        
+        # 5. 合成占卜卡
+        # 層級順序（從下到上）：
+        #   1. pet_image（寵物頭像，作為背景，放大到 600x1000）
+        #   2. cover_image（覆蓋圖片，疊加在寵物頭像上）
+        #   3. 文字（寵物名稱）
+        
+        # 創建一個新的 RGBA 圖片作為合成層
+        composite_image = Image.new('RGBA', (600, 1000))
+        
+        # 第一層：貼上寵物頭像作為背景
+        composite_image.paste(pet_image_bg, (0, 0))
+        app.logger.info(f"✅ 第一層：寵物頭像背景已貼上")
+        
+        # 第二層：疊加覆蓋圖片（cover_image）
+        # 使用 paste 配合 mask 參數（第三個參數傳入 cover_image）
+        # 這樣 cover_image 的透明區域（圓框內）會顯示下層的寵物頭像
+        if cover_image.mode == 'RGBA':
+            # 使用 alpha 通道作為 mask，透明區域會保留下層內容
+            composite_image.paste(cover_image, (0, 0), cover_image)
+            app.logger.info(f"✅ 第二層：覆蓋圖片已疊加（使用 RGBA alpha 通道）")
+        else:
+            # 如果沒有 alpha 通道，直接貼上（會完全覆蓋）
+            composite_image.paste(cover_image, (0, 0))
+            app.logger.warning(f"⚠️ 覆蓋圖片沒有 alpha 通道，會完全覆蓋寵物頭像")
+        
+        app.logger.info(f"✅ 圖片合成完成（寵物頭像在下，覆蓋圖片在上，透明區域顯示寵物）")
+        
+        # 6. 添加文字（寵物名稱）
+        draw = ImageDraw.Draw(composite_image)
+        
+        # 載入字型（支援中文的字型）
+        font = None
+        font_size = 32  # 字體大小（可調整：建議範圍 20-36）
+        
+        # 優先順序：1. assets 專案字型 2. macOS 系統字型 3. Linux 系統字型 4. 預設字型
+        font_paths = [
+            './assets/fonts/粗線體.TTF',              # 專案自訂字型（優先）
+            './assets/fonts/粗線體.ttf',              # 專案自訂字型（小寫）
+            './assets/fonts/NotoSansTC-Regular.ttf', # 專案預設字型
+            '/System/Library/Fonts/STHeiti Medium.ttc', # macOS 中文字型（黑體）
+            '/System/Library/Fonts/Hiragino Sans GB.ttc', # macOS 中文字型（冬青黑體）
+            '/System/Library/Fonts/STHeiti Light.ttc', # macOS 中文字型（細黑體）
+            '/Library/Fonts/PingFang.ttc',              # macOS 中文字型（如果存在）
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',  # Linux 中文字型
+            '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',  # Linux Noto 字型
+        ]
+        
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    # 處理不同字型格式
+                    font_path_lower = font_path.lower()
+                    if font_path_lower.endswith('.ttc'):
+                        # TTC 字型文件需要指定字型索引（通常是 0）
+                        font = ImageFont.truetype(font_path, font_size, index=0)
+                    elif font_path_lower.endswith(('.ttf', '.otf')):
+                        # TTF 或 OTF 字型文件
+                        font = ImageFont.truetype(font_path, font_size)
+                    else:
+                        # 嘗試載入（可能是其他格式）
+                        font = ImageFont.truetype(font_path, font_size)
+                    app.logger.info(f"✅ 載入字型成功: {font_path}, 大小: {font_size}")
+                    break
+                except Exception as e:
+                    app.logger.warning(f"⚠️ 載入字型失敗 {font_path}: {e}")
+                    continue
+        
+        # 如果所有字型都無法載入，使用預設字型（會顯示亂碼）
+        if font is None:
+            app.logger.error(f"❌ 無法載入任何中文字型，中文可能顯示為方塊")
+            app.logger.error(f"💡 請將 NotoSansTC-Regular.ttf 放在 ./assets/fonts/ 目錄")
+            font = ImageFont.load_default()
+            font_size = 16  # 預設字型較小
+        
+        # 準備文字內容（確保是 UTF-8 字串）
+        text_content = str(pet_name)
+        # 確保文字是正確的 Unicode 字串
+        if isinstance(text_content, bytes):
+            text_content = text_content.decode('utf-8')
+        
+        app.logger.info(f"🔍 準備繪製文字（垂直排列）: '{text_content}' (類型: {type(text_content)}, 長度: {len(text_content)})")
+        
+        # ============================================
+        # 文字位置調整參數（可在此調整）
+        # ============================================
+        # 圖片尺寸：寬 600px，高 1000px
+        # 座標系統：(0, 0) 在左上角
+        # 
+        # text_x_offset: 水平偏移（正數向右，負數向左）
+        #   - 0 = 水平置中
+        #   - 正值 = 向右移動
+        #   - 負值 = 向左移動
+        #
+        # text_y_base: 垂直基準位置（從底部開始計算）
+        #   - 900 = 距離底部 100px
+        #   - 增大 = 向上移動
+        #   - 減小 = 向下移動
+        #
+        # char_spacing: 字符間距調整（乘以字高）
+        #   - 1.0 = 正常間距
+        #   - 1.2 = 增加 20% 間距
+        #   - 0.8 = 減少 20% 間距
+        # ============================================
+        text_x_offset = 88     # 水平偏移（單位：像素）- 正值向右，負值向左
+        text_y_base = 437      # 垂直基準位置（距離頂部，單位：像素）
+        char_spacing = 1.0      # 字符間距倍數
+        
+        # 垂直排列文字（每個字符垂直向下排列）
+        try:
+            # 計算第一個字符的寬度以確定水平位置（置中）
+            first_char = text_content[0] if text_content else ''
+            if first_char:
+                char_bbox = draw.textbbox((0, 0), first_char, font=font)
+                char_width = char_bbox[2] - char_bbox[0]
+                text_x = (600 - char_width) // 2 + text_x_offset  # 應用水平偏移
+            else:
+                text_x = 300 + text_x_offset  # 預設置中 + 偏移
+            
+            # 計算每個字符的高度（用於垂直間距）
+            sample_char = '字' if text_content else 'A'
+            char_bbox = draw.textbbox((0, 0), sample_char, font=font)
+            char_height = char_bbox[3] - char_bbox[1]
+            char_height_adjusted = int(char_height * char_spacing)  # 應用字符間距
+            
+            # 計算垂直文字的總高度，從基準位置向上排列
+            total_height = len(text_content) * char_height_adjusted
+            start_y = text_y_base - total_height  # 從基準位置向上排列
+            
+            # 逐個字符垂直繪製
+            current_y = start_y
+            for i, char in enumerate(text_content):
+                # 繪製單個字符（垂直排列）- 白色文字
+                draw.text((text_x, current_y), char, fill=(255, 255, 255, 255), font=font)
+                # 下一個字符向下移動（使用調整後的間距）
+                current_y += char_height_adjusted
+            
+            app.logger.info(f"✅ 垂直文字繪製完成: '{text_content}' 起始位置: ({text_x}, {start_y}), 字符數: {len(text_content)}")
+        except Exception as e:
+            app.logger.error(f"❌ 垂直文字繪製失敗: {e}")
+            # 嘗試使用水平方式作為備用
+            try:
+                text_bbox = draw.textbbox((0, 0), text_content, font=font)
+                text_width = text_bbox[2] - text_bbox[0]
+                text_x = (600 - text_width) // 2
+                draw.text((text_x, 900), text_content, fill=(255, 255, 255, 255), font=font)  # 白色文字
+                app.logger.info(f"✅ 使用水平備用方式繪製文字成功")
+            except Exception as e2:
+                app.logger.error(f"❌ 備用文字繪製也失敗: {e2}")
+        
+        # 7. 轉換回 RGB 模式並保存
+        final_image = composite_image.convert('RGB')
+        
+        # 生成唯一的文件名
+        filename = f"{uuid.uuid4()}.png"
+        output_path = os.path.join(output_dir, filename)
+        final_image.save(output_path, 'PNG')
+        app.logger.info(f"✅ 占卜卡保存成功: {output_path}")
+        
+        # 清理臨時文件
+        os.remove(temp_pet_path)
+        
+        # 8. 返回外部 URL
+        external_url = f"https://chatbot.ruru1211.xyz/output/{filename}"
+        return external_url
+        
+    except Exception as e:
+        app.logger.error(f"❌ 生成占卜卡失敗: {e}", exc_info=True)
+        # 清理可能存在的臨時文件
+        try:
+            if 'temp_pet_path' in locals():
+                if os.path.exists(temp_pet_path):
+                    os.remove(temp_pet_path)
+            if 'temp_bg_path' in locals():
+                if os.path.exists(temp_bg_path):
+                    os.remove(temp_bg_path)
+        except:
+            pass
+        return None
+
+
 def get_pet_system_prompt(pet_id=None):
     """
     取得寵物的系統提示詞
@@ -194,6 +522,43 @@ def home():
         用於檢查服務是否正常運行
     """
     return "🐕 寵物聊天機器人 LINE Bot 正在運行中！"
+
+
+@app.route("/output/<filename>")
+def serve_output_file(filename):
+    """
+    提供 output 目錄中的靜態文件（占卜卡圖片）
+    
+    參數:
+        filename: 文件名稱
+    
+    返回:
+        Flask Response: 圖片文件或 404 錯誤
+    
+    說明:
+        讓 LINE Bot 可以通過 URL 訪問生成的占卜卡圖片
+    """
+    try:
+        from flask import send_from_directory
+        output_dir = os.path.abspath('./output')
+        
+        # 安全性檢查：確保文件名不包含路徑跳轉字符
+        if '..' in filename or '/' in filename or '\\' in filename:
+            app.logger.warning(f"❌ 嘗試訪問非法文件: {filename}")
+            abort(404)
+        
+        # 檢查文件是否存在
+        file_path = os.path.join(output_dir, filename)
+        if not os.path.exists(file_path):
+            app.logger.warning(f"❌ 文件不存在: {file_path}")
+            abort(404)
+        
+        # 發送文件
+        app.logger.info(f"📤 提供文件: {filename}")
+        return send_from_directory(output_dir, filename, mimetype='image/png')
+    except Exception as e:
+        app.logger.error(f"❌ 提供文件失敗: {e}")
+        abort(404)
 
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -397,8 +762,68 @@ LINE User ID:
 • 輸入「說明」查看此訊息
 • 輸入「我的ID」查看你的使用者ID
 • 輸入「愛寵小語」獲取專屬小語
+• 輸入「占卜」或「/fortune」生成占卜卡
 
 快來跟我聊天吧！～"""
+                # 寵物占卜卡功能
+                # 調用 API 生成占卜卡圖片
+                elif user_message.lower() in ['寵物占卜', '/fortune']:
+                    try:
+                        app.logger.info(f"🔮 用戶 {user_id} 請求占卜卡")
+                        
+                        # 生成占卜卡
+                        fortune_card_url = generate_fortune_card(pet_id)
+                        
+                        if fortune_card_url:
+                            app.logger.info(f"✅ 占卜卡生成成功，URL: {fortune_card_url}")
+                            
+                            # 使用 ImageMessage 回傳圖片
+                            image_message = ImageMessage(
+                                original_content_url=fortune_card_url,
+                                preview_image_url=fortune_card_url
+                            )
+                            
+                            app.logger.info(f"📤 準備發送圖片到 LINE，URL: {fortune_card_url}")
+                            
+                            try:
+                                with ApiClient(configuration) as api_client:
+                                    line_bot_api = MessagingApi(api_client)
+                                    response = line_bot_api.reply_message_with_http_info(
+                                        ReplyMessageRequest(
+                                            reply_token=event.reply_token,
+                                            messages=[image_message]
+                                        )
+                                    )
+                                    app.logger.info(f"✅ 圖片已成功發送到 LINE，狀態碼: {response[1]}")
+                            except Exception as e:
+                                # reply_token 已失效，用 push_message 補救
+                                app.logger.warning(f"reply_token 失效，改用 push_message: {e}")
+                                try:
+                                    with ApiClient(configuration) as api_client:
+                                        line_bot_api = MessagingApi(api_client)
+                                        line_bot_api.push_message(
+                                            PushMessageRequest(
+                                                to=user_id,
+                                                messages=[image_message]
+                                            )
+                                        )
+                                    app.logger.info(f"✅ 使用 push_message 成功發送圖片")
+                                except Exception as e2:
+                                    app.logger.error(f"❌ push_message 也失敗: {e2}")
+                                    reply_text = f"嗚...圖片發送失敗：{str(e2)}"
+                                    # 不 return，繼續執行後續的文字回覆邏輯
+                            
+                            # 存入資料庫
+                            save_chat_message(user_id, pet_id, 'assistant', f"占卜卡: {pet_name}")
+                            return
+                        else:
+                            app.logger.error(f"❌ 占卜卡生成失敗，返回 URL 為 None")
+                            reply_text = "嗚...占卜卡生成失敗了，請稍後再試～"
+                            
+                    except Exception as e:
+                        app.logger.error(f"❌ 占卜卡功能失敗: {e}", exc_info=True)
+                        reply_text = f"嗚...占卜過程中發生錯誤：{str(e)}"
+                
                 # 愛寵小語功能
                 # 調用 API: https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}
                 # 回覆圖片和文字
@@ -607,6 +1032,11 @@ def main():
     else:
         logger.info(f"🏠 Ollama 模型: {OLLAMA_MODEL}")
     logger.info(f"🐕 寵物 ID: {PET_ID}")
+    
+    # 確保必要的目錄存在
+    os.makedirs('output', exist_ok=True)
+    os.makedirs('logs', exist_ok=True)
+    logger.info("✅ 目錄檢查完成（output, logs）")
     
     # 啟動 Flask 應用
     port = int(os.getenv('PORT', 8000))
