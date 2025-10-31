@@ -824,19 +824,6 @@ LINE User ID:
                             app.logger.info(f"📤 準備發送圖片到 LINE，URL: {fortune_card_url}")
                             
                             try:
-                                with ApiClient(configuration) as api_client:
-                                    line_bot_api = MessagingApi(api_client)
-                                    response = line_bot_api.reply_message_with_http_info(
-                                        ReplyMessageRequest(
-                                            reply_token=event.reply_token,
-                                            messages=[image_message]
-                                        )
-                                    )
-                                    app.logger.info(f"✅ 圖片已成功發送到 LINE，狀態碼: {response[1]}")
-                            except Exception as e:
-                                # reply_token 已失效，用 push_message 補救
-                                app.logger.warning(f"reply_token 失效，改用 push_message: {e}")
-                                try:
                                     with ApiClient(configuration) as api_client:
                                         line_bot_api = MessagingApi(api_client)
                                         line_bot_api.push_message(
@@ -846,13 +833,12 @@ LINE User ID:
                                             )
                                         )
                                     app.logger.info(f"✅ 使用 push_message 成功發送圖片")
-                                except Exception as e2:
+                            except Exception as e2:
                                     app.logger.error(f"❌ push_message 也失敗: {e2}")
                                     reply_text = f"嗚...圖片發送失敗：{str(e2)}"
                                     # 不 return，繼續執行後續的文字回覆邏輯
                             
                             # 存入資料庫
-                            save_chat_message(user_id, pet_id, 'assistant', f"占卜卡: {pet_name}")
                             return
                         else:
                             app.logger.error(f"❌ 占卜卡生成失敗，返回 URL 為 None")
@@ -861,6 +847,8 @@ LINE User ID:
                     except Exception as e:
                         app.logger.error(f"❌ 占卜卡功能失敗: {e}", exc_info=True)
                         reply_text = f"嗚...占卜過程中發生錯誤：{str(e)}"
+                
+
                 
                 # 愛寵小語功能
                 # 調用 API: https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}
