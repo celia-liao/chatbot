@@ -41,6 +41,9 @@ load_dotenv()
 # Logging 設定
 # ============================================
 
+# 確保 logs 目錄存在
+os.makedirs('logs', exist_ok=True)
+
 # 設定 logging 格式
 logging.basicConfig(
     level=logging.INFO,
@@ -437,7 +440,9 @@ def generate_fortune_card(pet_id: int) -> str:
         os.remove(temp_pet_path)
         
         # 8. 返回外部 URL
-        external_url = f"https://chatbot.ruru1211.xyz/output/{filename}"
+        # 注意：URL 需要使用 /line/output/ 前綴，因為 Nginx 配置了 /line 路由
+        external_url = f"https://chatbot.ruru1211.xyz/line/output/{filename}"
+        app.logger.info(f"🔗 生成的外部 URL: {external_url}")
         return external_url
         
     except Exception as e:
@@ -525,6 +530,7 @@ def home():
 
 
 @app.route("/output/<filename>")
+@app.route("/line/output/<filename>")  # 支援 Nginx 轉發的路徑
 def serve_output_file(filename):
     """
     提供 output 目錄中的靜態文件（占卜卡圖片）
@@ -569,36 +575,68 @@ def callback():
     說明:
         接收來自 LINE Platform 的事件
         驗證簽名並轉發給 handler 處理
-        處理 ngrok 免費版的 GET 請求
+        處理 LINE 的驗證請求和實際事件
     """
-    # 處理 GET 請求（ngrok 免費版會先發送 GET 請求）
-    if request.method == 'GET':
-        app.logger.info("收到 GET 請求（可能是 ngrok 免費版檢查）")
-        return 'OK', 200
-    
-    # 處理 POST 請求（LINE 的實際 webhook）
-    # 取得 X-Line-Signature header
-    signature = request.headers.get('X-Line-Signature')
-    
-    if not signature:
-        app.logger.error("缺少 X-Line-Signature header")
-        abort(400)
-    
-    # 取得 request body
-    body = request.get_data(as_text=True)
-    app.logger.info(f"收到 webhook 請求: {body}")
-    
-    # 驗證簽名並處理事件
     try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        app.logger.error("簽名驗證失敗！請檢查 LINE_CHANNEL_SECRET 是否正確")
-        abort(400)
+        # 處理 GET 請求（LINE 驗證或 ngrok 檢查）
+        if request.method == 'GET':
+            app.logger.info("✅ 收到 GET 請求（LINE webhook 驗證或 ngrok 檢查）")
+            return 'OK', 200
+        
+        # 處理 POST 請求（LINE 的實際 webhook）
+        app.logger.info("📨 收到 POST webhook 請求")
+        
+        # 取得 X-Line-Signature header
+        signature = request.headers.get('X-Line-Signature')
+        
+        # 取得 request body
+        body = request.get_data(as_text=True)
+        
+        # LINE 驗證請求可能是空 body，需要特殊處理
+        if not body or len(body) == 0:
+            app.logger.info("📨 收到空 body（可能是 LINE 驗證請求）")
+            if signature:
+                # 有簽名但空 body，可能是驗證請求，返回 OK
+                app.logger.info("✅ 驗證請求通過")
+                return 'OK', 200
+            else:
+                # 無簽名無 body，可能是測試請求
+                app.logger.info("✅ 測試請求，返回 OK")
+                return 'OK', 200
+        
+        # 有 body 的請求需要驗證簽名
+        if not signature:
+            app.logger.error("❌ 缺少 X-Line-Signature header（有 body 但無簽名）")
+            # 為了調試，記錄請求信息但不 abort
+            app.logger.error(f"❌ Request headers: {dict(request.headers)}")
+            app.logger.error(f"❌ Body 長度: {len(body)}")
+            # 返回 200 以避免 LINE 重試（但記錄錯誤）
+            return 'OK', 200
+        
+        app.logger.info(f"📦 Webhook body 長度: {len(body)} 字符")
+        app.logger.info(f"📦 Body 前 100 字符: {body[:100]}")
+        
+        # 驗證簽名並處理事件
+        try:
+            handler.handle(body, signature)
+            app.logger.info("✅ Webhook 處理完成")
+        except InvalidSignatureError as e:
+            app.logger.error(f"❌ 簽名驗證失敗！請檢查 LINE_CHANNEL_SECRET 是否正確: {e}")
+            # 簽名驗證失敗時也返回 200，避免 LINE 重試
+            # 但記錄錯誤以便排查
+            return 'OK', 200
+        except Exception as e:
+            app.logger.error(f"❌ 處理 webhook 時發生錯誤: {e}", exc_info=True)
+            # 發生其他錯誤時也返回 200，避免 LINE 重試
+            # 但記錄完整錯誤信息
+            return 'OK', 200
+        
+        return 'OK', 200
+        
     except Exception as e:
-        app.logger.error(f"處理 webhook 時發生錯誤: {e}")
-        abort(500)
-    
-    return 'OK', 200
+        # 捕獲所有未預期的異常，確保始終返回 200
+        app.logger.error(f"❌ Webhook 處理發生未預期錯誤: {e}", exc_info=True)
+        return 'OK', 200
 
 
 @app.route("/test")
@@ -767,7 +805,7 @@ LINE User ID:
 快來跟我聊天吧！～"""
                 # 寵物占卜卡功能
                 # 調用 API 生成占卜卡圖片
-                elif user_message.lower() in ['寵物占卜', '/fortune']:
+                elif user_message.lower() in ['毛孩占卜', '/fortune']:
                     try:
                         app.logger.info(f"🔮 用戶 {user_id} 請求占卜卡")
                         
