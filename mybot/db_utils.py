@@ -298,3 +298,61 @@ def clear_chat_history(line_user_id: str, pet_id: int):
         return False
     finally:
         connection.close()
+
+
+def get_all_bound_users():
+    """
+    獲取所有已綁定 LINE 的使用者
+    
+    返回:
+        list: 包含寵物 ID 和 LINE 使用者 ID 的字典列表，格式如下：
+            [{"pet_id": int, "line_user_id": str}, ...]
+        空列表: 如果沒有綁定使用者或發生錯誤
+    
+    說明:
+        此函數會從 API 獲取所有已綁定 LINE 的使用者：
+        API 端點：https://test.ruru1211.xyz/api/all-bound-users
+        
+        資料來源改為 API，不再直接查詢資料庫
+    """
+    try:
+        # 從 API 獲取所有已綁定 LINE 的使用者
+        api_url = "https://test.ruru1211.xyz/api/all-bound-users"
+        print(f"[DEBUG] 從 API 獲取所有已綁定 LINE 的使用者：{api_url}")
+        
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()  # 如果 HTTP 狀態碼不是 200，會拋出異常
+        
+        data = response.json()
+        
+        # 檢查 API 回應是否成功
+        if not data.get("success", False):
+            print(f"[DEBUG] API 回傳失敗：{data}")
+            return []
+            
+        users_data = data.get("data", [])
+        if not users_data:
+            print(f"[DEBUG] API 回傳的 data 為空或沒有綁定使用者")
+            return []
+        
+        # 確保返回格式正確（每個元素包含 pet_id 和 line_user_id）
+        users = []
+        for user in users_data:
+            if isinstance(user, dict) and user.get("pet_id") and user.get("line_user_id"):
+                users.append({
+                    "pet_id": user.get("pet_id"),
+                    "line_user_id": user.get("line_user_id")
+                })
+        
+        print(f"[DEBUG] 找到 {len(users)} 位已綁定 LINE 的使用者")
+        return users
+        
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] API 請求失敗: {e}")
+        return []
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] API 回傳的 JSON 格式錯誤: {e}")
+        return []
+    except Exception as e:
+        print(f"[ERROR] 獲取綁定使用者時發生錯誤: {e}")
+        return []

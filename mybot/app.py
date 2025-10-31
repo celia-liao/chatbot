@@ -66,7 +66,8 @@ try:
         get_pet_id_by_line_user,
         save_chat_message,
         get_chat_history,
-        clear_chat_history
+        clear_chat_history,
+        get_all_bound_users
     )
     from mybot.personalities import pet_personality_templates
     from mybot.chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
@@ -77,7 +78,8 @@ except ImportError:
         get_pet_id_by_line_user,
         save_chat_message,
         get_chat_history,
-        clear_chat_history
+        clear_chat_history,
+        get_all_bound_users
     )
     from personalities import pet_personality_templates
     from chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
@@ -723,6 +725,115 @@ def healthz():
     http_status = 200 if all_healthy else 503
     
     return jsonify(status), http_status
+
+
+@app.route("/daily-fortune", methods=['POST'])
+def daily_fortune():
+    """
+    每日推播占卜卡功能
+    
+    說明:
+        1. 僅允許 localhost (127.0.0.1) 存取
+        2. 從資料庫查出所有已綁定 LINE 的使用者
+        3. 為每位使用者生成占卜卡並推播
+    
+    返回:
+        JSON: {"status": "success", "count": 推播成功的使用者數量}
+        或 403 Forbidden (如果非 localhost 請求)
+    """
+    # 檢查請求來源是否為 localhost
+    # 支援 IPv4 (127.0.0.1) 和 IPv6 (::1) 的 localhost
+    client_ip = request.remote_addr
+    
+    # 如果透過 Nginx 反向代理，檢查 X-Forwarded-For header
+    forwarded_for = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() if request.headers.get('X-Forwarded-For') else None
+    real_ip = request.headers.get('X-Real-IP', '').strip() if request.headers.get('X-Real-IP') else None
+    
+    # 檢查實際來源 IP（優先順序：X-Real-IP > X-Forwarded-For > remote_addr）
+    actual_ip = real_ip or forwarded_for or client_ip
+    
+    if actual_ip not in ['127.0.0.1', '::1']:
+        app.logger.warning(f"❌ 拒絕非 localhost 的每日推播請求: remote_addr={client_ip}, X-Real-IP={real_ip}, X-Forwarded-For={forwarded_for}, actual_ip={actual_ip}")
+        abort(403)
+    
+    app.logger.info("📅 Daily fortune job started")
+    
+    try:
+        # 1. 獲取所有已綁定 LINE 的使用者
+        bound_users = get_all_bound_users()
+        
+        if not bound_users:
+            app.logger.info("ℹ️ 沒有已綁定 LINE 的使用者")
+            return jsonify({"status": "success", "count": 0}), 200
+        
+        app.logger.info(f"📋 找到 {len(bound_users)} 位已綁定使用者，開始推播占卜卡")
+        
+        # 2. 統計變數
+        success_count = 0
+        failed_count = 0
+        
+        # 3. 遍歷每位使用者並推播占卜卡
+        for user in bound_users:
+            pet_id = user.get('pet_id')
+            line_user_id = user.get('line_user_id')
+            
+            if not pet_id or not line_user_id:
+                app.logger.warning(f"⚠️ 使用者資料不完整: {user}")
+                failed_count += 1
+                continue
+            
+            try:
+                app.logger.info(f"🔮 為使用者推播占卜卡 - pet_id: {pet_id}, line_user_id: {line_user_id}")
+                
+                # 生成占卜卡
+                fortune_card_url = generate_fortune_card(pet_id)
+                
+                if not fortune_card_url:
+                    app.logger.warning(f"⚠️ 占卜卡生成失敗 - pet_id: {pet_id}, line_user_id: {line_user_id}")
+                    failed_count += 1
+                    continue
+                
+                app.logger.info(f"✅ 占卜卡生成成功 - URL: {fortune_card_url}")
+                
+                # 使用 LINE Messaging API 推送圖片
+                image_message = ImageMessage(
+                    original_content_url=fortune_card_url,
+                    preview_image_url=fortune_card_url
+                )
+                
+                try:
+                    with ApiClient(configuration) as api_client:
+                        line_bot_api = MessagingApi(api_client)
+                        line_bot_api.push_message(
+                            PushMessageRequest(
+                                to=line_user_id,
+                                messages=[image_message]
+                            )
+                        )
+                    app.logger.info(f"✅ 成功推播占卜卡給使用者 - line_user_id: {line_user_id}")
+                    success_count += 1
+                except Exception as push_error:
+                    app.logger.error(f"❌ LINE 推播失敗 - line_user_id: {line_user_id}, 錯誤: {push_error}")
+                    failed_count += 1
+                    
+            except Exception as e:
+                app.logger.error(f"❌ 處理使用者推播時發生錯誤 - pet_id: {pet_id}, line_user_id: {line_user_id}, 錯誤: {e}", exc_info=True)
+                failed_count += 1
+        
+        # 4. 回傳結果
+        app.logger.info(f"📊 每日推播完成 - 成功: {success_count}, 失敗: {failed_count}")
+        return jsonify({
+            "status": "success",
+            "count": success_count,
+            "failed": failed_count
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ 每日推播功能發生錯誤: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 # ============================================
