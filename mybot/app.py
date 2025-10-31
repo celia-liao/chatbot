@@ -998,21 +998,6 @@ LINE User ID:
             pass
 
 
-@app.route("/line/output/<path:filename>")
-def serve_output_file(filename):
-    output_dir = os.path.abspath('./output')
-    # 安全保護
-    if '..' in filename or '/' in filename or '\\' in filename:
-        abort(404)
-    file_path = os.path.join(output_dir, filename)
-    if not os.path.exists(file_path):
-        abort(404)
-    # 回傳圖片，交由 Flask 設定 Content-Type
-    resp = send_from_directory(output_dir, filename, mimetype='image/png')
-    # 加上快取 header（可被 LINE 接受）
-    resp.headers['Cache-Control'] = 'public, max-age=3600'
-    return resp
-
 # ============================================
 # 主程式入口
 # ============================================
