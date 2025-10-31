@@ -284,6 +284,15 @@ def generate_fortune_card(pet_id: int) -> str:
         #   2. cover_image（覆蓋圖片，疊加在寵物頭像上）
         #   3. 文字（寵物名稱）
         
+        # ===== 底圖位置調整參數 =====
+        cover_x = 0  # 底圖水平位置（0 = 最左邊，正數 = 往右移，負數 = 往左移）
+        cover_y = -10  # 底圖垂直位置（0 = 最上邊，正數 = 往下移，負數 = 往上移）
+        # ===== 調整說明 =====
+        # - 如果底圖需要往右移動 10 像素：cover_x = 10
+        # - 如果底圖需要往下移動 20 像素：cover_y = 20
+        # - 如果底圖需要往左移動 5 像素：cover_x = -5
+        # - 如果底圖需要往上移動 15 像素：cover_y = -15
+        
         # 創建一個新的 RGBA 圖片作為合成層
         composite_image = Image.new('RGBA', (600, 1000))
         
@@ -294,14 +303,15 @@ def generate_fortune_card(pet_id: int) -> str:
         # 第二層：疊加覆蓋圖片（cover_image）
         # 使用 paste 配合 mask 參數（第三個參數傳入 cover_image）
         # 這樣 cover_image 的透明區域（圓框內）會顯示下層的寵物頭像
+        cover_position = (cover_x, cover_y)
         if cover_image.mode == 'RGBA':
             # 使用 alpha 通道作為 mask，透明區域會保留下層內容
-            composite_image.paste(cover_image, (0, 0), cover_image)
-            app.logger.info(f"✅ 第二層：覆蓋圖片已疊加（使用 RGBA alpha 通道）")
+            composite_image.paste(cover_image, cover_position, cover_image)
+            app.logger.info(f"✅ 第二層：覆蓋圖片已疊加（使用 RGBA alpha 通道），位置: {cover_position}")
         else:
             # 如果沒有 alpha 通道，直接貼上（會完全覆蓋）
-            composite_image.paste(cover_image, (0, 0))
-            app.logger.warning(f"⚠️ 覆蓋圖片沒有 alpha 通道，會完全覆蓋寵物頭像")
+            composite_image.paste(cover_image, cover_position)
+            app.logger.warning(f"⚠️ 覆蓋圖片沒有 alpha 通道，會完全覆蓋寵物頭像，位置: {cover_position}")
         
         app.logger.info(f"✅ 圖片合成完成（寵物頭像在下，覆蓋圖片在上，透明區域顯示寵物）")
         
