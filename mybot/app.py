@@ -12,7 +12,7 @@ import logging
 import uuid
 import random
 import requests
-from datetime import datetime
+from datetime import datetime, date
 from dotenv import load_dotenv
 from flask import Flask, request, abort, jsonify, send_from_directory
 from PIL import Image, ImageDraw, ImageFont
@@ -67,7 +67,10 @@ try:
         save_chat_message,
         get_chat_history,
         clear_chat_history,
-        get_all_bound_users
+        get_all_bound_users,
+        get_daily_fortune_card,
+        save_daily_fortune_card,
+        create_daily_fortune_cards_table
     )
     from mybot.personalities import pet_personality_templates
     from mybot.chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
@@ -79,7 +82,10 @@ except ImportError:
         save_chat_message,
         get_chat_history,
         clear_chat_history,
-        get_all_bound_users
+        get_all_bound_users,
+        get_daily_fortune_card,
+        save_daily_fortune_card,
+        create_daily_fortune_cards_table
     )
     from personalities import pet_personality_templates
     from chatbot_ollama import build_system_prompt, chat_with_pet as chat_with_pet_ollama
@@ -148,22 +154,42 @@ def generate_fortune_card(pet_id: int) -> str:
         str: 生成的占卜卡圖片外部 URL，如果失敗則返回 None
     
     功能:
-        1. 呼叫 A 專案 API 獲取寵物資料
-        2. 下載寵物頭像圖片
-        3. 從本地隨機選擇背景圖片
-        4. 合成占卜卡（頭像貼在指定位置）
-        5. 添加文字（寵物名稱 + "今天好運旺旺！"）
-        6. 保存到 output 目錄
-        7. 返回外部 URL
+        1. 檢查當日是否已生成占卜卡（當日內容固定，不重複抽籤）
+        2. 如果已生成，直接返回已有的 URL
+        3. 如果未生成：
+           - 呼叫 A 專案 API 獲取寵物資料
+           - 下載寵物頭像圖片
+           - 從本地隨機選擇背景圖片
+           - 合成占卜卡（頭像貼在指定位置）
+           - 添加文字（寵物名稱 + "今天好運旺旺！"）
+           - 保存到 output 目錄
+           - 記錄到資料庫
+           - 返回外部 URL
     """
     try:
+        # 0. 檢查當日是否已生成占卜卡（當日內容固定功能）
+        today = date.today().strftime('%Y-%m-%d')
+        existing_filename = get_daily_fortune_card(pet_id, today)
+        
+        if existing_filename:
+            # 檢查文件是否真的存在
+            output_dir = './output'
+            existing_path = os.path.join(output_dir, existing_filename)
+            if os.path.exists(existing_path):
+                external_url = f"https://chatbot.ruru1211.xyz/line/output/{existing_filename}"
+                app.logger.info(f"♻️  使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
+                return external_url
+            else:
+                # 文件不存在，清除記錄並重新生成
+                app.logger.warning(f"⚠️  資料庫記錄的占卜卡文件不存在，將重新生成: {existing_filename}")
+        
         # 1. 確保 output 目錄存在
         output_dir = './output'
         os.makedirs(output_dir, exist_ok=True)
         
-        # 2. 呼叫 A 專案 API 獲取寵物資料
+        # 2. 呼叫 A 專案 API 獲取寵物資料（當日第一次生成）
         api_url = f"https://test.ruru1211.xyz/api/fortune-card/random?pet_id={pet_id}"
-        app.logger.info(f"🔮 調用占卜卡 API: {api_url}")
+        app.logger.info(f"🔮 調用占卜卡 API (當日首次生成): {api_url}")
         
         response = requests.get(api_url, timeout=10)
         response.raise_for_status()
@@ -456,7 +482,14 @@ def generate_fortune_card(pet_id: int) -> str:
         # 清理臨時文件
         os.remove(temp_pet_path)
         
-        # 8. 返回外部 URL
+        # 8. 保存到資料庫（當日記錄）
+        save_success = save_daily_fortune_card(pet_id, filename, today)
+        if save_success:
+            app.logger.info(f"💾 已保存每日占卜卡記錄: pet_id={pet_id}, date={today}, filename={filename}")
+        else:
+            app.logger.warning(f"⚠️  保存每日占卜卡記錄失敗，但不影響使用")
+        
+        # 9. 返回外部 URL
         # 注意：URL 需要使用 /line/output/ 前綴，因為 Nginx 配置了 /line 路由
         external_url = f"https://chatbot.ruru1211.xyz/line/output/{filename}"
         app.logger.info(f"🔗 生成的外部 URL: {external_url}")
@@ -1187,6 +1220,14 @@ def main():
     os.makedirs('output', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
     logger.info("✅ 目錄檢查完成（output, logs）")
+    
+    # 初始化每日占卜卡資料表（如果不存在）
+    try:
+        create_daily_fortune_cards_table()
+        logger.info("✅ 每日占卜卡資料表檢查完成")
+    except Exception as e:
+        logger.warning(f"⚠️  初始化每日占卜卡資料表時發生錯誤: {e}")
+        logger.warning("💡 提示: 請手動執行 SQL 創建 daily_fortune_cards 表")
     
     # 啟動 Flask 應用
     port = int(os.getenv('PORT', 8000))

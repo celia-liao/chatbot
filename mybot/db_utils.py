@@ -356,3 +356,140 @@ def get_all_bound_users():
     except Exception as e:
         print(f"[ERROR] 獲取綁定使用者時發生錯誤: {e}")
         return []
+
+
+# ============================================
+# 每日占卜卡缓存功能
+# ============================================
+
+def get_daily_fortune_card(pet_id: int, date_str: str = None):
+    """
+    獲取當日已生成的占卜卡
+    
+    參數:
+        pet_id (int): 寵物 ID
+        date_str (str, optional): 日期字串，格式 YYYY-MM-DD，如果不提供則使用今天
+    
+    返回:
+        str: 占卜卡圖片文件名，如果不存在則返回 None
+    
+    說明:
+        查詢資料庫中是否已存在該寵物當日的占卜卡記錄
+    """
+    from datetime import date
+    
+    if date_str is None:
+        date_str = date.today().strftime('%Y-%m-%d')
+    
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT filename FROM daily_fortune_cards WHERE pet_id = %s AND fortune_date = %s",
+                (pet_id, date_str)
+            )
+            result = cursor.fetchone()
+            if result:
+                print(f"[DEBUG] 找到當日占卜卡記錄: pet_id={pet_id}, date={date_str}, filename={result.get('filename')}")
+                return result.get('filename')
+            else:
+                print(f"[DEBUG] 未找到當日占卜卡記錄: pet_id={pet_id}, date={date_str}")
+                return None
+    except Exception as e:
+        print(f"[ERROR] 查詢每日占卜卡失敗: {e}")
+        return None
+    finally:
+        connection.close()
+
+
+def save_daily_fortune_card(pet_id: int, filename: str, date_str: str = None):
+    """
+    保存每日占卜卡記錄
+    
+    參數:
+        pet_id (int): 寵物 ID
+        filename (str): 占卜卡圖片文件名
+        date_str (str, optional): 日期字串，格式 YYYY-MM-DD，如果不提供則使用今天
+    
+    返回:
+        bool: 保存成功返回 True，失敗返回 False
+    
+    說明:
+        將當日生成的占卜卡記錄保存到資料庫
+        如果已存在則更新，不存在則新增
+    """
+    from datetime import date
+    
+    if date_str is None:
+        date_str = date.today().strftime('%Y-%m-%d')
+    
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 使用 INSERT ... ON DUPLICATE KEY UPDATE 或先檢查再插入/更新
+            cursor.execute(
+                "SELECT id FROM daily_fortune_cards WHERE pet_id = %s AND fortune_date = %s",
+                (pet_id, date_str)
+            )
+            existing = cursor.fetchone()
+            
+            if existing:
+                # 更新現有記錄
+                cursor.execute(
+                    "UPDATE daily_fortune_cards SET filename = %s, updated_at = NOW() WHERE pet_id = %s AND fortune_date = %s",
+                    (filename, pet_id, date_str)
+                )
+                print(f"[DEBUG] 更新每日占卜卡記錄: pet_id={pet_id}, date={date_str}, filename={filename}")
+            else:
+                # 插入新記錄
+                cursor.execute(
+                    "INSERT INTO daily_fortune_cards (pet_id, fortune_date, filename, created_at, updated_at) VALUES (%s, %s, %s, NOW(), NOW())",
+                    (pet_id, date_str, filename)
+                )
+                print(f"[DEBUG] 新增每日占卜卡記錄: pet_id={pet_id}, date={date_str}, filename={filename}")
+            
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"[ERROR] 保存每日占卜卡記錄失敗: {e}")
+        connection.rollback()
+        return False
+    finally:
+        connection.close()
+
+
+def create_daily_fortune_cards_table():
+    """
+    創建每日占卜卡記錄表（如果不存在）
+    
+    說明:
+        此函數用於初始化資料庫表結構
+        可以在首次部署時手動執行，或讓應用程式在啟動時自動創建
+    """
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # 創建表（如果不存在）
+            create_table_sql = """
+            CREATE TABLE IF NOT EXISTS daily_fortune_cards (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                pet_id INT NOT NULL,
+                fortune_date DATE NOT NULL,
+                filename VARCHAR(255) NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                UNIQUE KEY unique_pet_date (pet_id, fortune_date),
+                INDEX idx_pet_id (pet_id),
+                INDEX idx_fortune_date (fortune_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """
+            cursor.execute(create_table_sql)
+            connection.commit()
+            print("[DEBUG] daily_fortune_cards 表創建成功或已存在")
+            return True
+    except Exception as e:
+        print(f"[ERROR] 創建 daily_fortune_cards 表失敗: {e}")
+        connection.rollback()
+        return False
+    finally:
+        connection.close()
