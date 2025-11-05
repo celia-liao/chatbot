@@ -20,4 +20,9 @@ DB_CONFIG = {
 }
 
 # API 基礎 URL（從環境變數讀取）
+# BASE_URL: A 專案的 API 基礎 URL（用於 API 調用）
 BASE_URL = os.getenv("BASE_URL", "https://test.ruru1211.xyz")
+
+# 外部訪問 URL（從環境變數讀取）
+# EXTERNAL_URL: LINE Bot 的外部訪問 URL（用於生成占卜卡圖片 URL）
+EXTERNAL_URL = os.getenv("EXTERNAL_URL", os.getenv("BASE_URL", "https://chatbot.ruru1211.xyz"))

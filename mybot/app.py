@@ -103,12 +103,13 @@ LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
 
 # 從環境變數讀取 API 基礎 URL
 try:
-    from mybot.config import BASE_URL
+    from mybot.config import BASE_URL, EXTERNAL_URL
 except ImportError:
-    from config import BASE_URL
+    from config import BASE_URL, EXTERNAL_URL
 
-# 記錄 BASE_URL 配置（用於調試）
-logger.info(f"🌐 BASE_URL 配置: {BASE_URL}")
+# 記錄 URL 配置（用於調試）
+logger.info(f"🌐 BASE_URL (API): {BASE_URL}")
+logger.info(f"🌐 EXTERNAL_URL (圖片): {EXTERNAL_URL}")
 
 # 檢查 LINE Bot 憑證是否已設定
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
@@ -185,9 +186,9 @@ def generate_fortune_card(pet_id: int) -> str:
             output_dir = './output'
             existing_path = os.path.join(output_dir, existing_filename)
             if os.path.exists(existing_path):
-                external_url = f"{BASE_URL}/line/output/{existing_filename}"
+                external_url = f"{EXTERNAL_URL}/line/output/{existing_filename}"
                 app.logger.info(f"♻️  使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
-                app.logger.info(f"🔗 生成的 URL (使用 BASE_URL={BASE_URL}): {external_url}")
+                app.logger.info(f"🔗 生成的 URL (使用 EXTERNAL_URL={EXTERNAL_URL}): {external_url}")
                 return external_url
             else:
                 # 文件不存在，清除記錄並重新生成
@@ -501,8 +502,8 @@ def generate_fortune_card(pet_id: int) -> str:
         
         # 9. 返回外部 URL
         # 注意：URL 需要使用 /line/output/ 前綴，因為 Nginx 配置了 /line 路由
-        external_url = f"{BASE_URL}/line/output/{filename}"
-        app.logger.info(f"🔗 生成的外部 URL: {external_url}")
+        external_url = f"{EXTERNAL_URL}/line/output/{filename}"
+        app.logger.info(f"🔗 生成的外部 URL (使用 EXTERNAL_URL={EXTERNAL_URL}): {external_url}")
         return external_url
         
     except Exception as e:
