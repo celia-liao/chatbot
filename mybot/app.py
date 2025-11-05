@@ -183,7 +183,8 @@ def generate_fortune_card(pet_id: int) -> str:
         
         if existing_filename:
             # 檢查文件是否真的存在
-            output_dir = './output'
+            output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+            os.makedirs(output_dir, exist_ok=True)
             existing_path = os.path.join(output_dir, existing_filename)
             if os.path.exists(existing_path):
                 external_url = f"{EXTERNAL_URL}/line/output/{existing_filename}"
@@ -195,7 +196,7 @@ def generate_fortune_card(pet_id: int) -> str:
                 app.logger.warning(f"⚠️  資料庫記錄的占卜卡文件不存在，將重新生成: {existing_filename}")
         
         # 1. 確保 output 目錄存在
-        output_dir = './output'
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
         os.makedirs(output_dir, exist_ok=True)
         
         # 2. 呼叫 A 專案 API 獲取寵物資料（當日第一次生成）
@@ -607,7 +608,8 @@ def serve_output_file(filename):
     """
     try:
         from flask import send_from_directory
-        output_dir = os.path.abspath('./output')
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+        os.makedirs(output_dir, exist_ok=True)
         
         # 安全性檢查：確保文件名不包含路徑跳轉字符
         if '..' in filename or '/' in filename or '\\' in filename:
