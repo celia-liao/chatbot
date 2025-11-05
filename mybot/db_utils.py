@@ -13,9 +13,9 @@ import json
 
 # 支援兩種運行方式
 try:
-    from mybot.config import DB_CONFIG
+    from mybot.config import DB_CONFIG, BASE_URL
 except ImportError:
-    from config import DB_CONFIG
+    from config import DB_CONFIG, BASE_URL
 
 def get_connection():
     """
@@ -55,13 +55,13 @@ def get_pet_profile(pet_id: int):
     
     說明:
         此函數會從 API 獲取寵物資料：
-        API 端點：https://test.ruru1211.xyz/api/pet-data-by-id/{pet_id}
+        API 端點：{BASE_URL}/api/pet-data-by-id/{pet_id}
         
         資料來源改為 API，不再直接查詢資料庫
     """
     try:
         # 從 API 獲取寵物資料
-        api_url = f"https://test.ruru1211.xyz/api/pet-data-by-id/{pet_id}"
+        api_url = f"{BASE_URL}/api/pet-data-by-id/{pet_id}"
         print(f"[DEBUG] 從 API 獲取 pet_id={pet_id} 的資料：{api_url}")
         
         response = requests.get(api_url, timeout=10)
@@ -120,13 +120,13 @@ def get_pet_id_by_line_user(line_user_id: str):
     
     說明:
         此函數會從 API 獲取 LINE 使用者對應的寵物 ID：
-        API 端點：https://test.ruru1211.xyz/api/pet-id-by-line-user/{line_user_id}
+        API 端點：{BASE_URL}/api/pet-id-by-line-user/{line_user_id}
         
         資料來源改為 API，不再直接查詢資料庫
     """
     try:
         # 從 API 獲取 LINE 使用者對應的寵物 ID
-        api_url = f"https://test.ruru1211.xyz/api/pet-id-by-line-user/{line_user_id}"
+        api_url = f"{BASE_URL}/api/pet-id-by-line-user/{line_user_id}"
         print(f"[DEBUG] 從 API 獲取 line_user_id={line_user_id} 對應的寵物 ID：{api_url}")
         
         response = requests.get(api_url, timeout=10)
@@ -311,13 +311,13 @@ def get_all_bound_users():
     
     說明:
         此函數會從 API 獲取所有已綁定 LINE 的使用者：
-        API 端點：https://test.ruru1211.xyz/api/all-bound-users
+        API 端點：{BASE_URL}/api/all-bound-users
         
         資料來源改為 API，不再直接查詢資料庫
     """
     try:
         # 從 API 獲取所有已綁定 LINE 的使用者
-        api_url = "https://test.ruru1211.xyz/api/all-bound-users"
+        api_url = f"{BASE_URL}/api/all-bound-users"
         print(f"[DEBUG] 從 API 獲取所有已綁定 LINE 的使用者：{api_url}")
         
         response = requests.get(api_url, timeout=10)

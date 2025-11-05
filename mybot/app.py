@@ -101,6 +101,12 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
 
+# 從環境變數讀取 API 基礎 URL
+try:
+    from mybot.config import BASE_URL
+except ImportError:
+    from config import BASE_URL
+
 # 檢查 LINE Bot 憑證是否已設定
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
     print("⚠️  警告：LINE Bot 憑證未設定！")
@@ -176,7 +182,7 @@ def generate_fortune_card(pet_id: int) -> str:
             output_dir = './output'
             existing_path = os.path.join(output_dir, existing_filename)
             if os.path.exists(existing_path):
-                external_url = f"https://chatbot.ruru1211.xyz/line/output/{existing_filename}"
+                external_url = f"{BASE_URL}/line/output/{existing_filename}"
                 app.logger.info(f"♻️  使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
                 return external_url
             else:
@@ -188,7 +194,7 @@ def generate_fortune_card(pet_id: int) -> str:
         os.makedirs(output_dir, exist_ok=True)
         
         # 2. 呼叫 A 專案 API 獲取寵物資料（當日第一次生成）
-        api_url = f"https://test.ruru1211.xyz/api/fortune-card/random?pet_id={pet_id}"
+        api_url = f"{BASE_URL}/api/fortune-card/random?pet_id={pet_id}"
         app.logger.info(f"🔮 調用占卜卡 API (當日首次生成): {api_url}")
         
         response = requests.get(api_url, timeout=10)
@@ -491,7 +497,7 @@ def generate_fortune_card(pet_id: int) -> str:
         
         # 9. 返回外部 URL
         # 注意：URL 需要使用 /line/output/ 前綴，因為 Nginx 配置了 /line 路由
-        external_url = f"https://chatbot.ruru1211.xyz/line/output/{filename}"
+        external_url = f"{BASE_URL}/line/output/{filename}"
         app.logger.info(f"🔗 生成的外部 URL: {external_url}")
         return external_url
         
@@ -1010,14 +1016,14 @@ LINE User ID:
 
                 
                 # 愛寵小語功能
-                # 調用 API: https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}
+                # 調用 API: {BASE_URL}/api/pet-whisper/random?pet_id={pet_id}
                 # 回覆圖片和文字
                 elif user_message.lower() in ['愛寵小語', '小語', '寵物小語']:
                     try:
                         import requests
                         from linebot.v3.messaging import FlexMessage, FlexContainer
 
-                        api_url = f"https://test.ruru1211.xyz/api/pet-whisper/random?pet_id={pet_id}"
+                        api_url = f"{BASE_URL}/api/pet-whisper/random?pet_id={pet_id}"
                         app.logger.info(f"🔍 調用愛寵小語 API: {api_url}")
                         
                         response = requests.get(api_url, timeout=10)

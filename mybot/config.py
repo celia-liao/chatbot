@@ -18,3 +18,6 @@ DB_CONFIG = {
     "database": os.getenv("DB_NAME", "lbblacktech-laravel"),  # 資料庫名稱
     "charset": "utf8mb4"                               # 字元編碼（支援表情符號和繁體中文）
 }
+
+# API 基礎 URL（從環境變數讀取）
+BASE_URL = os.getenv("BASE_URL", "https://test.ruru1211.xyz")
