@@ -107,6 +107,9 @@ try:
 except ImportError:
     from config import BASE_URL
 
+# 記錄 BASE_URL 配置（用於調試）
+logger.info(f"🌐 BASE_URL 配置: {BASE_URL}")
+
 # 檢查 LINE Bot 憑證是否已設定
 if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
     print("⚠️  警告：LINE Bot 憑證未設定！")
@@ -184,6 +187,7 @@ def generate_fortune_card(pet_id: int) -> str:
             if os.path.exists(existing_path):
                 external_url = f"{BASE_URL}/line/output/{existing_filename}"
                 app.logger.info(f"♻️  使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
+                app.logger.info(f"🔗 生成的 URL (使用 BASE_URL={BASE_URL}): {external_url}")
                 return external_url
             else:
                 # 文件不存在，清除記錄並重新生成
