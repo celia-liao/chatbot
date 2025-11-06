@@ -16,6 +16,12 @@ from linebot.v3.messaging import (
     FlexContainer
 )
 
+# 導入情緒檢測模組
+try:
+    from mybot.modules.emotion_detector import detect_emotion
+except ImportError:
+    from modules.emotion_detector import detect_emotion
+
 logger = logging.getLogger('pet_chatbot')
 
 
@@ -104,6 +110,51 @@ def _handle_fortune_command(user_id, pet_id, generate_fortune_card_func, configu
     except Exception as e:
         logger.error(f"❌ 占卜卡功能失敗: {e}", exc_info=True)
         return False, f"嗚...占卜過程中發生錯誤：{str(e)}"
+
+
+def _build_emotion_context(emotion_result: dict, pet_name: str) -> str:
+    """
+    根據情緒分析結果建立上下文提示詞
+    
+    參數:
+        emotion_result (dict): 情緒分析結果，包含 emotion, confidence, polarity
+        pet_name (str): 寵物名字
+    
+    返回:
+        str: 情緒上下文提示詞
+    """
+    if not emotion_result:
+        return ""
+    
+    emotion = emotion_result.get('emotion', 'contentment')
+    polarity = emotion_result.get('polarity', 'positive')
+    confidence = emotion_result.get('confidence', 0.5)
+    
+    # 情緒描述映射
+    emotion_descriptions = {
+        'amusement': '開心和有趣',
+        'awe': '感到驚嘆和震撼',
+        'contentment': '滿足和安心',
+        'excitement': '興奮和期待',
+        'anger': '生氣和憤怒',
+        'disgust': '感到厭惡和反感',
+        'fear': '害怕和擔心',
+        'sad': '難過和沮喪'
+    }
+    
+    emotion_desc = emotion_descriptions.get(emotion, '情緒平靜')
+    
+    # 根據情緒強度調整描述
+    if confidence >= 0.8:
+        intensity_desc = "非常" if polarity == "positive" else "相當"
+    elif confidence >= 0.6:
+        intensity_desc = "有點" if polarity == "positive" else "稍微"
+    else:
+        intensity_desc = "略微"
+    
+    context = f"主人現在{intensity_desc}{emotion_desc}（情緒：{emotion}，信心度：{confidence:.1%}）"
+    
+    return context
 
 
 def _handle_whisper_command(user_id, pet_id, pet_name, BASE_URL, configuration, event):
@@ -271,16 +322,30 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                 
                 # 一般對話
                 else:
+                    # 1️⃣ 情緒辨識模組
+                    logger.info(f"🎭 開始情緒分析 - 用戶: {user_id}")
+                    emotion_result = detect_emotion(user_message)
+                    logger.info(f"✅ 情緒分析結果: {emotion_result}")
+                    
+                    # 根據情緒生成上下文提示
+                    emotion_context = _build_emotion_context(emotion_result, pet_name)
+                    
+                    # 將情緒上下文加入 system_prompt
+                    enhanced_system_prompt = system_prompt
+                    if emotion_context:
+                        enhanced_system_prompt = f"{system_prompt}\n\n        💭 主人現在的情緒狀態：\n        {emotion_context}\n        - 請根據主人的情緒狀態調整你的回應方式\n        - 如果主人情緒低落，要溫柔安慰\n        - 如果主人情緒正向，可以更活潑開心地回應\n"
+                    
                     history = get_chat_history_func(user_id, pet_id, limit=8)
                     save_chat_message_func(user_id, pet_id, 'user', user_message)
                     
                     logger.info(f"💬 處理對話 - 用戶: {user_id}, 模式: {AI_MODE}")
                     logger.info(f"📝 輸入訊息: {user_message}")
+                    logger.info(f"🎭 情緒: {emotion_result['emotion']} ({emotion_result['polarity']}, 信心度: {emotion_result['confidence']:.2f})")
                     
                     if AI_MODE == 'api':
                         logger.info(f"🌐 使用 API 模式 - 模型: {QWEN_MODEL}")
                         reply_text = chat_with_pet_api_func(
-                            system_prompt=system_prompt,
+                            system_prompt=enhanced_system_prompt,
                             user_input=user_message,
                             history=history,
                             model=QWEN_MODEL,
@@ -290,7 +355,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                     else:
                         logger.info(f"🏠 使用 Ollama 模式 - 模型: {OLLAMA_MODEL}")
                         reply_text = chat_with_pet_ollama_func(
-                            system_prompt=system_prompt,
+                            system_prompt=enhanced_system_prompt,
                             user_input=user_message,
                             history=history,
                             model=OLLAMA_MODEL,
