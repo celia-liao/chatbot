@@ -394,8 +394,10 @@ def daily_fortune():
     # 檢查實際來源 IP（優先順序：X-Real-IP > X-Forwarded-For > remote_addr）
     actual_ip = real_ip or forwarded_for or client_ip
     
-    if actual_ip not in ['127.0.0.1', '::1']:
-        app.logger.warning(f"❌ 拒絕非 localhost 的每日推播請求: remote_addr={client_ip}, X-Real-IP={real_ip}, X-Forwarded-For={forwarded_for}, actual_ip={actual_ip}")
+    allowed_ips = ['127.0.0.1', '::1', 'localhost']
+
+    if actual_ip not in allowed_ips:
+        app.logger.warning(f"拒絕非本地來源: {actual_ip}")
         abort(403)
     
     app.logger.info("📅 Daily fortune job started")
