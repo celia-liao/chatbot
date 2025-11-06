@@ -28,6 +28,50 @@ class EmotionDetector:
                        anger, disgust, fear, sad (負向)
     """
     
+    # 情緒關鍵詞映射（用於關鍵詞修正層）
+    EMOTION_KEYWORDS = {
+        "amusement": [
+            "開心", "好笑", "哈哈", "可愛", "有趣", "好玩", "幽默",
+            "笑死", "太好笑", "超好笑", "笑翻", "笑到", "XD", 
+            "呵呵", "逗", "搞笑", "歡樂", "愉快", "快樂", "歡笑",
+            "逗趣", "笑", "樂", "歡", "喜"
+        ],
+        "awe": [
+            "驚嘆", "震撼", "驚訝", "驚奇", "驚艷", "驚喜", "驚人", "不可思議",
+            "太厲害", "太強", "太棒", "超棒", "厲害", "強", "佩服", "崇拜",
+            "讚嘆", "驚為天人", "嘆為觀止", "令人驚艷", "震撼人心", "震驚",
+            "驚嘆不已"
+        ],
+        "contentment": [
+            "滿足", "安心", "平靜", "舒適", "舒服", "放鬆", "滿意", "愜意",
+            "舒心", "安穩", "安寧", "祥和", "和諧", "知足", "悠閒", "輕鬆",
+            "愉悅", "舒暢", "自在", "舒坦", "安逸", "寧靜", "靜", "安"
+        ],
+        "excitement": [
+            "興奮", "期待", "激動", "好期待", "超期待", "熱血", "熱情",
+            "迫不及待", "好興奮", "超興奮", "興奮不已", "激動不已",
+            "熱血沸騰", "期望", "盼望"
+        ],
+        "anger": [
+            "氣", "煩", "靠北", "無言", "生氣", "憤怒", "惱火", "火大",
+            "不爽", "討厭", "煩躁", "暴躁", "氣死", "氣炸", "氣瘋", "氣憤",
+            "怒", "怒火", "暴怒", "氣到", "氣死我了"
+        ],
+        "disgust": [
+            "厭惡", "反感", "噁心", "討厭", "厭煩", "厭倦", "想吐",
+            "嘔", "噁", "噁爛", "反胃"
+        ],
+        "fear": [
+            "害怕", "擔心", "恐懼", "驚恐", "恐慌", "不安", "焦慮",
+            "憂慮", "驚慌", "緊張", "怕"
+        ],
+        "sad": [
+            "難過", "孤單", "寂寞", "悲傷", "傷心", "沮喪", "失落",
+            "憂鬱", "鬱悶", "低落", "心痛", "心碎", "哀傷", "悲", "哀",
+            "孤獨"
+        ]
+    }
+    
     def __init__(self, model: str = "qwen:7b", temperature: float = 0.3):
         """
         初始化情緒分析器
@@ -42,32 +86,32 @@ class EmotionDetector:
         # 定義系統提示詞
         self.system_prompt = """你是一個情緒分析助手，負責判斷文字情緒。
 
-【重要】你只能使用以下 8 種情緒類別，不能使用其他任何詞彙：
-正向情緒（4種）：amusement（開心有趣）, awe（驚嘆震撼）, contentment（滿足安心）, excitement（興奮期待）
-負向情緒（4種）：anger（生氣憤怒）, disgust（厭惡反感）, fear（害怕擔心）, sad（難過沮喪）
+            【重要】你只能使用以下 8 種情緒類別，不能使用其他任何詞彙：
+            正向情緒（4種）：amusement（開心有趣）, awe（驚嘆震撼）, contentment（滿足安心）, excitement（興奮期待）
+            負向情緒（4種）：anger（生氣憤怒）, disgust（厭惡反感）, fear（害怕擔心）, sad（難過沮喪）
 
-【嚴格要求】：
-1. 仔細分析輸入文字，判斷最符合的單一情緒類別
-2. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sadness, angry 等都不允許）
-3. 只有在能明確判斷出上述 8 種情緒之一時，才返回該情緒
-4. confidence 必須是 0 到 1 之間的數值，表示你對情緒判斷的信心度
-5. polarity 必須與 emotion 一致：
-   - amusement, awe, contentment, excitement → "positive"
-   - anger, disgust, fear, sad → "negative"
+            【嚴格要求】：
+            1. 仔細分析輸入文字，判斷最符合的單一情緒類別
+            2. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sadness, angry 等都不允許）
+            3. 只有在能明確判斷出上述 8 種情緒之一時，才返回該情緒
+            4. confidence 必須是 0 到 1 之間的數值，表示你對情緒判斷的信心度
+            5. polarity 必須與 emotion 一致：
+            - amusement, awe, contentment, excitement → "positive"
+            - anger, disgust, fear, sad → "negative"
 
-【判斷規則】：
-- 如果文字明顯表達某一種情緒，使用該情緒並給予高 confidence（>0.7）
-- 如果文字情緒不明確或混合多種情緒，選擇最主導的情緒並降低 confidence（<0.6）
-- 如果完全無法判斷，使用 "contentment" 並給予低 confidence（<0.5）
+            【判斷規則】：
+            - 如果文字明顯表達某一種情緒，使用該情緒並給予高 confidence（>0.7）
+            - 如果文字情緒不明確或混合多種情緒，選擇最主導的情緒並降低 confidence（<0.6）
+            - 如果完全無法判斷，使用 "contentment" 並給予低 confidence（<0.5）
 
-回覆格式（必須嚴格遵守）：
-{
-    "emotion": "amusement|awe|contentment|excitement|anger|disgust|fear|sad",
-    "confidence": 0.0-1.0,
-    "polarity": "positive|negative"
-}
+            回覆格式（必須嚴格遵守）：
+            {
+                "emotion": "amusement|awe|contentment|excitement|anger|disgust|fear|sad",
+                "confidence": 0.0-1.0,
+                "polarity": "positive|negative"
+            }
 
-請勿輸出除JSON以外的內容。"""
+            請勿輸出除JSON以外的內容。"""
         
         logger.info(f"EmotionDetector 初始化完成，使用模型: {model}")
     
@@ -112,6 +156,94 @@ class EmotionDetector:
         
         return None
     
+    def _refine_with_keywords(self, text: str, current_emotion: str, current_confidence: float) -> dict:
+        """
+        關鍵詞修正層（Lexical Refinement）
+        
+        當 LLM 信心分數低於 0.6 時，檢查輸入文字中是否包含特定情緒關鍵詞，
+        進行修正並提升信心分數。
+        
+        參數:
+            text (str): 原始輸入文字
+            current_emotion (str): 當前 LLM 判斷的情緒
+            current_confidence (float): 當前信心分數
+        
+        返回:
+            dict: 修正後的情緒結果，格式與 detect_emotion 相同
+        """
+        if current_confidence >= 0.6:
+            # 信心分數已足夠，不需要修正
+            return None
+        
+        # 將文字轉換為簡體以便比對（關鍵詞列表已包含繁簡）
+        text_normalized = cc_t2s.convert(text.strip())
+        
+        # 檢查每個情緒的關鍵詞
+        emotion_scores = {}
+        for emotion, keywords in self.EMOTION_KEYWORDS.items():
+            score = 0
+            for keyword in keywords:
+                # 將關鍵詞也轉換為簡體
+                keyword_normalized = cc_t2s.convert(keyword)
+                # 計算關鍵詞出現次數
+                count = text_normalized.count(keyword_normalized)
+                if count > 0:
+                    score += count
+            if score > 0:
+                emotion_scores[emotion] = score
+        
+        # 如果有找到匹配的關鍵詞
+        if emotion_scores:
+            # 找到得分最高的情緒
+            best_emotion = max(emotion_scores.items(), key=lambda x: x[1])[0]
+            best_score = emotion_scores[best_emotion]
+            
+            # 如果找到的情緒與當前不同，或相同但需要提升信心分數，則進行修正
+            if best_emotion != current_emotion:
+                # 情緒不同，進行修正
+                # 根據關鍵詞匹配數量和得分，調整信心分數（至少 0.85）
+                refined_confidence = min(0.85 + (best_score * 0.05), 0.95)
+                
+                # 確定極性
+                if best_emotion in ["amusement", "awe", "contentment", "excitement"]:
+                    polarity = "positive"
+                else:
+                    polarity = "negative"
+                
+                logger.info(
+                    f"關鍵詞修正：{current_emotion} (confidence: {current_confidence:.2f}) -> "
+                    f"{best_emotion} (confidence: {refined_confidence:.2f})，匹配關鍵詞分數: {best_score}"
+                )
+                
+                return {
+                    "emotion": best_emotion,
+                    "confidence": refined_confidence,
+                    "polarity": polarity
+                }
+            elif best_emotion == current_emotion:
+                # 情緒相同但信心分數低，使用關鍵詞匹配提升信心分數至至少 0.85
+                refined_confidence = min(0.85 + (best_score * 0.05), 0.95)
+                
+                # 確定極性
+                if best_emotion in ["amusement", "awe", "contentment", "excitement"]:
+                    polarity = "positive"
+                else:
+                    polarity = "negative"
+                
+                logger.info(
+                    f"關鍵詞修正（提升信心）：{current_emotion} (confidence: {current_confidence:.2f} -> "
+                    f"{refined_confidence:.2f})，匹配關鍵詞分數: {best_score}"
+                )
+                
+                return {
+                    "emotion": best_emotion,
+                    "confidence": refined_confidence,
+                    "polarity": polarity
+                }
+        
+        # 沒有找到匹配的關鍵詞，返回 None 表示不修正
+        return None
+    
     def detect_emotion(self, text: str) -> dict:
         """
         分析文字情緒
@@ -128,8 +260,10 @@ class EmotionDetector:
                 }
         
         說明:
-            使用本地 LLM 模型分析文字情緒
-            若模型回應無效或解析失敗，則返回預設值（contentment, 0.5, positive）
+            1. 使用本地 LLM 模型分析文字情緒（繁體轉簡體以提高準確度）
+            2. 若 LLM 信心分數低於 0.6，則啟用關鍵詞修正層（Lexical Refinement）
+            3. 關鍵詞修正層會檢查文字中的情緒關鍵詞，修正情緒並提升信心分數至至少 0.85
+            4. 若模型回應無效或解析失敗，則返回預設值（contentment, 0.5, positive）
         """
         if not text or not text.strip():
             return {
@@ -202,11 +336,22 @@ class EmotionDetector:
                         else:
                             polarity = "negative"
                 
-                return {
+                # 構建初始結果
+                initial_result = {
                     "emotion": emotion,
                     "confidence": confidence,
                     "polarity": polarity
                 }
+                
+                # 關鍵詞修正層：如果信心分數低於 0.6，嘗試使用關鍵詞修正
+                if confidence < 0.6:
+                    refined_result = self._refine_with_keywords(text, emotion, confidence)
+                    if refined_result:
+                        # 使用修正後的結果
+                        return refined_result
+                
+                # 返回 LLM 分析的結果
+                return initial_result
             
             # 如果解析失敗，返回預設值
             logger.warning(f"無法解析情緒分析結果，使用預設值。原始回應: {reply}")
