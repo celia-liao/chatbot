@@ -43,13 +43,22 @@ class EmotionDetector:
         self.system_prompt = """你是一個情緒分析助手，負責判斷文字情緒。
 
 【重要】你只能使用以下 8 種情緒類別，不能使用其他任何詞彙：
-正向情緒（4種）：amusement, awe, contentment, excitement
-負向情緒（4種）：anger, disgust, fear, sad
+正向情緒（4種）：amusement（開心有趣）, awe（驚嘆震撼）, contentment（滿足安心）, excitement（興奮期待）
+負向情緒（4種）：anger（生氣憤怒）, disgust（厭惡反感）, fear（害怕擔心）, sad（難過沮喪）
 
 【嚴格要求】：
-1. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sad, angry 等都不允許）
-2. confidence 必須是 0 到 1 之間的數值
-3. polarity 必須是 "positive" 或 "negative"
+1. 仔細分析輸入文字，判斷最符合的單一情緒類別
+2. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sadness, angry 等都不允許）
+3. 只有在能明確判斷出上述 8 種情緒之一時，才返回該情緒
+4. confidence 必須是 0 到 1 之間的數值，表示你對情緒判斷的信心度
+5. polarity 必須與 emotion 一致：
+   - amusement, awe, contentment, excitement → "positive"
+   - anger, disgust, fear, sad → "negative"
+
+【判斷規則】：
+- 如果文字明顯表達某一種情緒，使用該情緒並給予高 confidence（>0.7）
+- 如果文字情緒不明確或混合多種情緒，選擇最主導的情緒並降低 confidence（<0.6）
+- 如果完全無法判斷，使用 "contentment" 並給予低 confidence（<0.5）
 
 回覆格式（必須嚴格遵守）：
 {

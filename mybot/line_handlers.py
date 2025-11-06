@@ -4,6 +4,8 @@
 # ============================================
 
 import logging
+import os
+import random
 import requests
 from linebot.v3.messaging import (
     ApiClient,
@@ -124,6 +126,87 @@ def _handle_fortune_command(user_id, pet_id, generate_fortune_card_func, configu
     except Exception as e:
         logger.error(f"❌ 占卜卡功能失敗: {e}", exc_info=True)
         return False, f"嗚...占卜過程中發生錯誤：{str(e)}"
+
+
+# 緩存情緒圖片列表（避免重複掃描文件系統）
+_emotion_images_cache = {}
+
+
+def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None) -> str:
+    """
+    根據情緒獲取對應的圖片 URL（從資料夾內隨機選擇一張）
+    
+    參數:
+        emotion (str): 情緒類別（amusement, awe, contentment, excitement, anger, disgust, fear, sad）
+        EXTERNAL_URL (str): 外部訪問 URL（用於生成圖片 URL）
+        base_dir (str, optional): 專案根目錄路徑，如果為 None 則嘗試從環境推斷
+    
+    返回:
+        str: 情緒對應的隨機圖片 URL，如果沒有則返回 None
+    
+    說明:
+        圖片路徑結構：assets/images/emotions/{emotion}/
+        從對應情緒資料夾內隨機選擇一張圖片文件
+    """
+    emotion = emotion.lower()
+    
+    # 如果緩存中沒有該情緒的圖片列表，掃描資料夾
+    if emotion not in _emotion_images_cache:
+        # 如果沒有提供 base_dir，嘗試從當前工作目錄推斷
+        if base_dir is None:
+            # 嘗試找到專案根目錄（包含 assets 資料夾的目錄）
+            current_dir = os.getcwd()
+            # 檢查當前目錄或父目錄是否有 assets 資料夾
+            possible_paths = [
+                os.path.join(current_dir, 'assets', 'images', 'emotions', emotion),
+                os.path.join(os.path.dirname(current_dir), 'assets', 'images', 'emotions', emotion),
+                os.path.join(current_dir, '..', 'assets', 'images', 'emotions', emotion),
+            ]
+            
+            emotion_dir = None
+            for path in possible_paths:
+                abs_path = os.path.abspath(path)
+                if os.path.isdir(abs_path):
+                    emotion_dir = abs_path
+                    break
+        else:
+            emotion_dir = os.path.join(base_dir, 'assets', 'images', 'emotions', emotion)
+        
+        if emotion_dir and os.path.isdir(emotion_dir):
+            # 掃描資料夾內的所有圖片文件
+            image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+            image_files = []
+            
+            try:
+                for filename in os.listdir(emotion_dir):
+                    if any(filename.lower().endswith(ext) for ext in image_extensions):
+                        image_files.append(filename)
+                
+                # 建立完整 URL 列表
+                image_urls = [
+                    f'{EXTERNAL_URL}/assets/images/emotions/{emotion}/{filename}'
+                    for filename in image_files
+                ]
+                
+                _emotion_images_cache[emotion] = image_urls
+                logger.info(f"📂 掃描情緒資料夾 {emotion}: 找到 {len(image_urls)} 張圖片")
+            except Exception as e:
+                logger.warning(f"⚠️ 掃描情緒資料夾失敗 {emotion}: {e}")
+                _emotion_images_cache[emotion] = []
+        else:
+            logger.warning(f"⚠️ 情緒資料夾不存在: {emotion_dir}")
+            _emotion_images_cache[emotion] = []
+    
+    # 從緩存中隨機選擇一張圖片
+    image_urls = _emotion_images_cache.get(emotion, [])
+    
+    if image_urls:
+        selected_url = random.choice(image_urls)
+        logger.debug(f"🎲 隨機選擇情緒圖片: {emotion} -> {selected_url}")
+        return selected_url
+    else:
+        logger.warning(f"⚠️ 情緒 {emotion} 沒有可用的圖片")
+        return None
 
 
 def _build_emotion_context(emotion_result: dict, pet_name: str) -> str:
@@ -261,7 +344,7 @@ def _handle_whisper_command(user_id, pet_id, pet_name, BASE_URL, configuration, 
 def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prompt_func,
                        clear_chat_history_func, save_chat_message_func, get_chat_history_func,
                        chat_with_pet_api_func, chat_with_pet_ollama_func, generate_fortune_card_func,
-                       BASE_URL, AI_MODE, QWEN_MODEL, OLLAMA_MODEL, configuration):
+                       BASE_URL, EXTERNAL_URL, AI_MODE, QWEN_MODEL, OLLAMA_MODEL, configuration, base_dir=None):
     """
     處理文字訊息事件（主函數）
     
@@ -284,6 +367,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
         
         reply_text = None
         should_return = False
+        messages_to_send = None  # 初始化訊息列表
         
         # 處理特殊指令
         user_message_lower = user_message.lower()
@@ -388,19 +472,67 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                         logger.info("✅ Ollama 模式回應完成")
                     
                     save_chat_message_func(user_id, pet_id, 'assistant', reply_text)
+                    
+                    # 🖼️ 判斷是否需要發送情緒圖片
+                    # 只有在明確判斷出 8 種情緒之一且信心度足夠時才發送圖片
+                    valid_emotions = ['amusement', 'awe', 'contentment', 'excitement', 'anger', 'disgust', 'fear', 'sad']
+                    emotion = emotion_result.get('emotion', '').lower()
+                    confidence = emotion_result.get('confidence', 0.0)
+                    
+                    # 準備回覆訊息（預設只有文字）
+                    messages_to_send = [TextMessage(text=reply_text)]
+                    
+                    # 只有當情緒在有效列表中且信心度足夠高（>0.6）時才發送圖片
+                    if emotion in valid_emotions and confidence > 0.6:
+                        emotion_image_url = _get_emotion_image_url(emotion, EXTERNAL_URL, base_dir)
+                        
+                        if emotion_image_url:
+                            try:
+                                emotion_image = ImageMessage(
+                                    original_content_url=emotion_image_url,
+                                    preview_image_url=emotion_image_url
+                                )
+                                messages_to_send.append(emotion_image)
+                                logger.info(f"🖼️ 加入情緒圖片: {emotion} (信心度: {confidence:.2f}) -> {emotion_image_url}")
+                            except Exception as img_error:
+                                logger.warning(f"⚠️ 無法加入情緒圖片: {img_error}")
+                        else:
+                            logger.info(f"ℹ️ 情緒 {emotion} 沒有對應的圖片 URL")
+                    else:
+                        if emotion not in valid_emotions:
+                            logger.info(f"ℹ️ 情緒 {emotion} 不在有效列表中，不發送圖片")
+                        elif confidence <= 0.6:
+                            logger.info(f"ℹ️ 情緒 {emotion} 信心度 {confidence:.2f} 不足，不發送圖片")
         
         # 回覆訊息
         if reply_text:
+            # 如果沒有設定 messages_to_send，使用預設的文字訊息
+            if messages_to_send is None:
+                messages_to_send = [TextMessage(text=reply_text)]
+            
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message_with_http_info(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=reply_text)]
+                try:
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=messages_to_send
+                        )
                     )
-                )
-            
-            logger.info(f"回覆使用者 {user_id}：{reply_text}")
+                    logger.info(f"✅ 回覆使用者 {user_id}：{reply_text} (共 {len(messages_to_send)} 則訊息)")
+                except Exception as reply_error:
+                    logger.error(f"❌ 回覆訊息失敗: {reply_error}")
+                    # 如果回覆失敗，嘗試只發送文字
+                    try:
+                        line_bot_api.reply_message_with_http_info(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=reply_text)]
+                            )
+                        )
+                        logger.info(f"✅ 回覆文字訊息成功：{reply_text}")
+                    except Exception as text_error:
+                        logger.error(f"❌ 回覆文字訊息也失敗: {text_error}")
     
     except Exception as e:
         logger.error(f"處理訊息時發生錯誤: {e}", exc_info=True)

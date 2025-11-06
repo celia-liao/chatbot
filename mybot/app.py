@@ -159,8 +159,19 @@ else:
 
 # 獲取基礎目錄路徑（相對於 app.py 的位置）
 def _get_base_dir():
-    """獲取應用程式基礎目錄的絕對路徑"""
-    return os.path.dirname(os.path.abspath(__file__))
+    """
+    獲取專案根目錄的絕對路徑
+    
+    說明:
+        - 如果 app.py 在 mybot/ 目錄下，返回上一層目錄（專案根目錄）
+        - 專案根目錄應該包含 assets/ 資料夾
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 如果當前目錄是 mybot，返回上一層
+    if os.path.basename(current_dir) == 'mybot':
+        return os.path.dirname(current_dir)
+    # 否則返回當前目錄
+    return current_dir
 
 def _get_output_dir():
     """獲取 output 目錄的絕對路徑"""
@@ -503,10 +514,12 @@ def handle_text_message(event):
         chat_with_pet_ollama_func=chat_with_pet_ollama,
         generate_fortune_card_func=generate_fortune_card,
         BASE_URL=BASE_URL,
+        EXTERNAL_URL=EXTERNAL_URL,
         AI_MODE=AI_MODE,
         QWEN_MODEL=QWEN_MODEL,
         OLLAMA_MODEL=OLLAMA_MODEL,
-        configuration=configuration
+        configuration=configuration,
+        base_dir=_get_base_dir()
     )
 
 
