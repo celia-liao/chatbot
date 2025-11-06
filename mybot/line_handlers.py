@@ -480,7 +480,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                     confidence = emotion_result.get('confidence', 0.0)
                     
                     # 準備回覆訊息（預設只有文字）
-                    messages_to_send = [TextMessage(text=reply_text)]
+                    messages_to_send = None
                     
                     # 只有當情緒在有效列表中且信心度足夠高（>0.6）時才發送圖片
                     if emotion in valid_emotions and confidence > 0.6:
@@ -488,21 +488,47 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                         
                         if emotion_image_url:
                             try:
-                                emotion_image = ImageMessage(
-                                    original_content_url=emotion_image_url,
-                                    preview_image_url=emotion_image_url
+                                # 使用 Flex Message 同時發送文字和圖片
+                                flex_message = FlexMessage(
+                                    alt_text=f"{pet_name}的回覆",
+                                    contents=FlexContainer.from_dict({
+                                        "type": "bubble",
+                                        "body": {
+                                            "type": "box",
+                                            "layout": "vertical",
+                                            "contents": [
+                                                {
+                                                    "type": "image",
+                                                    "url": emotion_image_url,
+                                                    "size": "full",
+                                                    "aspectMode": "cover",
+                                                    "aspectRatio": "1:1"
+                                                },
+                                                {
+                                                    "type": "text",
+                                                    "text": reply_text,
+                                                    "wrap": True,
+                                                    "size": "md",
+                                                    "margin": "md"
+                                                }
+                                            ]
+                                        }
+                                    })
                                 )
-                                messages_to_send.append(emotion_image)
-                                logger.info(f"🖼️ 加入情緒圖片: {emotion} (信心度: {confidence:.2f}) -> {emotion_image_url}")
+                                messages_to_send = [flex_message]
+                                logger.info(f"🖼️ 使用 Flex Message 發送文字+圖片: {emotion} (信心度: {confidence:.2f}) -> {emotion_image_url}")
                             except Exception as img_error:
-                                logger.warning(f"⚠️ 無法加入情緒圖片: {img_error}")
+                                logger.warning(f"⚠️ 無法建立 Flex Message: {img_error}，改用純文字")
+                                messages_to_send = [TextMessage(text=reply_text)]
                         else:
-                            logger.info(f"ℹ️ 情緒 {emotion} 沒有對應的圖片 URL")
+                            logger.info(f"ℹ️ 情緒 {emotion} 沒有對應的圖片 URL，使用純文字")
+                            messages_to_send = [TextMessage(text=reply_text)]
                     else:
                         if emotion not in valid_emotions:
                             logger.info(f"ℹ️ 情緒 {emotion} 不在有效列表中，不發送圖片")
                         elif confidence <= 0.6:
                             logger.info(f"ℹ️ 情緒 {emotion} 信心度 {confidence:.2f} 不足，不發送圖片")
+                        messages_to_send = [TextMessage(text=reply_text)]
         
         # 回覆訊息
         if reply_text:
