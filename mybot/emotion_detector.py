@@ -41,17 +41,23 @@ class EmotionDetector:
         
         # 定義系統提示詞
         self.system_prompt = """你是一個情緒分析助手，負責判斷文字情緒。
-可用的情緒類別：
-正向情緒：amusement, awe, contentment, excitement
-負向情緒：anger, disgust, fear, sad
 
-請分析輸入文字的情緒類別，並依據語氣判斷其正向或負向。
-回覆格式：
+【重要】你只能使用以下 8 種情緒類別，不能使用其他任何詞彙：
+正向情緒（4種）：amusement, awe, contentment, excitement
+負向情緒（4種）：anger, disgust, fear, sad
+
+【嚴格要求】：
+1. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sad, angry 等都不允許）
+2. confidence 必須是 0 到 1 之間的數值
+3. polarity 必須是 "positive" 或 "negative"
+
+回覆格式（必須嚴格遵守）：
 {
-    "emotion": "<emotion>",
-    "confidence": <0~1之間的數值>,
-    "polarity": "<positive或negative>"
+    "emotion": "amusement|awe|contentment|excitement|anger|disgust|fear|sad",
+    "confidence": 0.0-1.0,
+    "polarity": "positive|negative"
 }
+
 請勿輸出除JSON以外的內容。"""
         
         logger.info(f"EmotionDetector 初始化完成，使用模型: {model}")
@@ -69,30 +75,6 @@ class EmotionDetector:
         if not text:
             return None
         
-        # 定義情緒映射表（處理模型可能返回的變體）
-        emotion_mapping = {
-            "positive": "contentment",  # 通用正向情緒
-            "negative": "sad",          # 通用負向情緒
-            "happy": "excitement",
-            "happiness": "excitement",
-            "joy": "excitement",
-            "sadness": "sad",
-            "disappointed": "sad",
-            "disappointment": "sad",
-            "disgusting": "disgust",
-            "scared": "fear",
-            "scary": "fear",
-            "angry": "anger",
-            "amused": "amusement",
-            "excited": "excitement",
-            "content": "contentment",
-            "satisfied": "contentment",
-            "satisfaction": "contentment",
-            "amazed": "awe",
-            "surprised": "awe",
-            "wonder": "awe"
-        }
-        
         # 嘗試直接解析 JSON
         try:
             # 移除可能的 markdown 代碼塊標記
@@ -107,10 +89,6 @@ class EmotionDetector:
             
             # 驗證必要欄位
             if all(key in result for key in ['emotion', 'confidence', 'polarity']):
-                # 映射情緒名稱
-                emotion = result['emotion'].lower()
-                if emotion in emotion_mapping:
-                    result['emotion'] = emotion_mapping[emotion]
                 return result
         except json.JSONDecodeError:
             # 如果直接解析失敗，嘗試提取 JSON 物件
@@ -119,10 +97,6 @@ class EmotionDetector:
                 try:
                     result = json.loads(json_match.group(0))
                     if all(key in result for key in ['emotion', 'confidence', 'polarity']):
-                        # 映射情緒名稱
-                        emotion = result['emotion'].lower()
-                        if emotion in emotion_mapping:
-                            result['emotion'] = emotion_mapping[emotion]
                         return result
                 except json.JSONDecodeError:
                     pass
@@ -274,35 +248,4 @@ def detect_emotion(text: str, model: str = "qwen:7b", temperature: float = 0.3) 
         _detector_instance = EmotionDetector(model=model, temperature=temperature)
     
     return _detector_instance.detect_emotion(text)
-
-
-# 測試範例
-if __name__ == "__main__":
-    # 設定日誌
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # 測試案例
-    test_cases = [
-        "今天好開心喔！",
-        "真的有點害怕明天的考試",
-        "看到這片美景，我感到非常震撼",
-        "這個味道讓我覺得很噁心",
-        "終於完成了，心情真好",
-        "我對這個結果感到非常失望和難過"
-    ]
-    
-    print("=" * 60)
-    print("情緒分析測試")
-    print("=" * 60)
-    
-    for test_text in test_cases:
-        result = detect_emotion(test_text)
-        print(f"\n輸入: {test_text}")
-        print(f"輸出: {result}")
-        print(f"  情緒: {result['emotion']}")
-        print(f"  信心度: {result['confidence']:.2f}")
-        print(f"  極性: {result['polarity']}")
 
