@@ -17,12 +17,26 @@ from linebot.v3.messaging import (
 )
 
 # 導入情緒檢測模組
+logger = logging.getLogger('pet_chatbot')
+
 try:
     from mybot.emotion_detector import detect_emotion
+    logger.info("✅ 情緒檢測模組導入成功 (mybot.emotion_detector)")
 except ImportError:
-    from emotion_detector import detect_emotion
-
-logger = logging.getLogger('pet_chatbot')
+    try:
+        from emotion_detector import detect_emotion
+        logger.info("✅ 情緒檢測模組導入成功 (emotion_detector)")
+    except ImportError as e:
+        logger.error(f"❌ 情緒檢測模組導入失敗: {e}")
+        logger.error("⚠️ 將使用預設情緒，情緒分析功能不可用")
+        # 提供一個備用的檢測函數，避免程式崩潰
+        def detect_emotion(text: str) -> dict:
+            logger.warning("⚠️ 使用預設情緒檢測函數（模組未導入）")
+            return {
+                "emotion": "contentment",
+                "confidence": 0.5,
+                "polarity": "positive"
+            }
 
 
 def _handle_my_id_command(user_id, pet_id):
@@ -323,9 +337,19 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                 # 一般對話
                 else:
                     # 1️⃣ 情緒辨識模組
-                    logger.info(f"🎭 開始情緒分析 - 用戶: {user_id}")
-                    emotion_result = detect_emotion(user_message)
-                    logger.info(f"✅ 情緒分析結果: {emotion_result}")
+                    logger.info(f"🎭 開始情緒分析 - 用戶: {user_id}, 訊息: {user_message[:50]}")
+                    try:
+                        emotion_result = detect_emotion(user_message)
+                        logger.info(f"✅ 情緒分析結果: {emotion_result}")
+                    except Exception as e:
+                        logger.error(f"❌ 情緒分析失敗: {e}", exc_info=True)
+                        # 使用預設情緒，避免程式崩潰
+                        emotion_result = {
+                            "emotion": "contentment",
+                            "confidence": 0.5,
+                            "polarity": "positive"
+                        }
+                        logger.warning(f"⚠️ 使用預設情緒: {emotion_result}")
                     
                     # 根據情緒生成上下文提示
                     emotion_context = _build_emotion_context(emotion_result, pet_name)
