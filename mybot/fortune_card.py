@@ -56,19 +56,26 @@ def _check_existing_fortune_card(pet_id, today, get_daily_fortune_card_func, EXT
     返回:
         str: 如果存在則返回 URL，否則返回 None
     """
+    logger.info(f"🔍 [檢查占卜卡] 開始檢查: pet_id={pet_id}, date={today}")
     existing_filename = get_daily_fortune_card_func(pet_id, today)
     
     if existing_filename:
+        logger.info(f"✅ [檢查占卜卡] 資料庫中找到記錄: filename={existing_filename}")
         output_dir = _get_output_dir()
         os.makedirs(output_dir, exist_ok=True)
         existing_path = os.path.join(output_dir, existing_filename)
+        logger.info(f"🔍 [檢查占卜卡] 檢查文件是否存在: {existing_path}")
+        
         if os.path.exists(existing_path):
             external_url = f"{EXTERNAL_URL}/line/output/{existing_filename}"
-            logger.info(f"♻️  使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
-            logger.info(f"🔗 生成的 URL (使用 EXTERNAL_URL={EXTERNAL_URL}): {external_url}")
+            logger.info(f"♻️  [檢查占卜卡] 使用當日已生成的占卜卡: pet_id={pet_id}, date={today}, filename={existing_filename}")
+            logger.info(f"🔗 [檢查占卜卡] 生成的 URL: {external_url}")
             return external_url
         else:
-            logger.warning(f"⚠️  資料庫記錄的占卜卡文件不存在，將重新生成: {existing_filename}")
+            logger.warning(f"⚠️  [檢查占卜卡] 資料庫記錄的文件不存在: {existing_filename}, 路徑: {existing_path}")
+            logger.warning(f"⚠️  [檢查占卜卡] 將重新生成新的占卜卡")
+    else:
+        logger.info(f"ℹ️  [檢查占卜卡] 資料庫中未找到當日記錄: pet_id={pet_id}, date={today}")
     
     return None
 
@@ -382,9 +389,14 @@ def generate_fortune_card(pet_id, BASE_URL, EXTERNAL_URL, get_daily_fortune_card
     try:
         # 0. 檢查當日是否已生成占卜卡
         today = date.today().strftime('%Y-%m-%d')
+        logger.info(f"📅 [生成占卜卡] 開始處理: pet_id={pet_id}, date={today}")
+        
         existing_url = _check_existing_fortune_card(pet_id, today, get_daily_fortune_card_func, EXTERNAL_URL)
         if existing_url:
+            logger.info(f"✅ [生成占卜卡] 返回已存在的占卜卡: {existing_url}")
             return existing_url
+        
+        logger.info(f"📝 [生成占卜卡] 當日尚未生成，開始生成新的占卜卡: pet_id={pet_id}, date={today}")
         
         # 1. 確保 output 目錄存在
         output_dir = _get_output_dir()
@@ -431,15 +443,24 @@ def generate_fortune_card(pet_id, BASE_URL, EXTERNAL_URL, get_daily_fortune_card
             os.remove(temp_pet_path)
         
         # 10. 保存到資料庫
+        logger.info(f"💾 [保存資料庫] 準備保存: pet_id={pet_id}, date={today}, filename={filename}")
         save_success = save_daily_fortune_card_func(pet_id, filename, today)
         if save_success:
-            logger.info(f"💾 已保存每日占卜卡記錄: pet_id={pet_id}, date={today}, filename={filename}")
+            logger.info(f"✅ [保存資料庫] 保存成功: pet_id={pet_id}, date={today}, filename={filename}")
+            # 立即驗證保存是否成功
+            verify_filename = get_daily_fortune_card_func(pet_id, today)
+            if verify_filename == filename:
+                logger.info(f"✅ [保存資料庫] 驗證成功: 資料庫記錄與保存的文件名一致")
+            else:
+                logger.error(f"❌ [保存資料庫] 驗證失敗: 期望={filename}, 實際={verify_filename}")
+                logger.error(f"❌ [保存資料庫] 這可能導致每次調用都生成新的占卜卡！")
         else:
-            logger.warning(f"⚠️  保存每日占卜卡記錄失敗，但不影響使用")
+            logger.error(f"❌ [保存資料庫] 保存失敗: pet_id={pet_id}, date={today}, filename={filename}")
+            logger.error(f"❌ [保存資料庫] 這可能導致每次調用都生成新的占卜卡！")
         
         # 11. 返回外部 URL
         external_url = f"{EXTERNAL_URL}/line/output/{filename}"
-        logger.info(f"🔗 生成的外部 URL (使用 EXTERNAL_URL={EXTERNAL_URL}): {external_url}")
+        logger.info(f"🔗 [生成占卜卡] 完成，返回 URL: {external_url}")
         return external_url
     
     except Exception as e:
