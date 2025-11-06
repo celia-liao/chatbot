@@ -18,9 +18,9 @@ from linebot.v3.messaging import (
 
 # 導入情緒檢測模組
 try:
-    from mybot.modules.emotion_detector import detect_emotion
+    from mybot.emotion_detector import detect_emotion
 except ImportError:
-    from modules.emotion_detector import detect_emotion
+    from emotion_detector import detect_emotion
 
 logger = logging.getLogger('pet_chatbot')
 
