@@ -8,7 +8,9 @@
 
 import json
 import logging
+import os
 import re
+import httpx
 import ollama
 from opencc import OpenCC
 
@@ -35,7 +37,9 @@ class EmotionDetector:
         "sad": ["難過", "悲傷", "傷心", "失落", "孤單", "寂寞", "低落", "沮喪", "心痛", "心碎"]
     }
 
-    def __init__(self, model: str = "qwen:7b", use_llm: bool = True):
+    def __init__(self, model: str = None, use_llm: bool = True):
+        if model is None:
+            model = os.getenv("QWEN_EMOTION_MODEL", "qwen-apia8")
         self.model = model
         self.use_llm = use_llm
         self.system_prompt = (
@@ -43,6 +47,11 @@ class EmotionDetector:
             "amusement, awe, contentment, excitement, anger, disgust, fear, sad。\n"
             "請以 JSON 格式輸出，例如：{\"emotion\": \"excitement\"}"
         )
+        self.api_key = os.getenv("QWEN_API_KEY")
+        self.api_url = os.getenv("QWEN_EMOTION_API_URL", os.getenv("QWEN_API_URL", "https://api.qwen.com/v1/chat/completions"))
+        self.api_timeout = float(os.getenv("QWEN_EMOTION_TIMEOUT", "15"))
+        self.api_temperature = float(os.getenv("QWEN_EMOTION_TEMPERATURE", "0.3"))
+        self.max_tokens = int(os.getenv("QWEN_EMOTION_MAX_TOKENS", "60"))
 
     # -----------------------
     # 1️⃣ 關鍵詞快速判斷
@@ -61,6 +70,58 @@ class EmotionDetector:
     # 2️⃣ LLM 判斷（可選）
     # -----------------------
     def _detect_by_llm(self, text: str) -> str:
+        # 優先使用 Qwen API，如無 API Key 則回退到本地 Ollama
+        if self.api_key:
+            return self._detect_by_api(text)
+        return self._detect_by_ollama(text)
+
+    def _detect_by_api(self, text: str) -> str:
+        if not self.api_key:
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        request_data = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": f"句子：{cc_t2s.convert(text)}"}
+            ],
+            "max_tokens": self.max_tokens,
+            "temperature": self.api_temperature,
+            "top_p": 0.9,
+            "stop": ["\n\n", "。。"]
+        }
+
+        try:
+            with httpx.Client(timeout=self.api_timeout) as client:
+                response = client.post(self.api_url, json=request_data, headers=headers)
+                response.raise_for_status()
+                result = response.json()
+                reply = result["choices"][0]["message"]["content"].strip()
+                match = re.search(r'"emotion"\s*:\s*"(\w+)"', reply)
+                if match:
+                    emotion = match.group(1)
+                    if emotion in self.EMOTION_KEYWORDS.keys():
+                        logger.info(f"[Qwen API] {text} → {emotion}")
+                        return emotion
+                # 若 API 已提供 JSON，可直接解析
+                try:
+                    data = json.loads(reply)
+                    emotion = data.get("emotion")
+                    if emotion in self.EMOTION_KEYWORDS.keys():
+                        logger.info(f"[Qwen API] {text} → {emotion}")
+                        return emotion
+                except json.JSONDecodeError:
+                    pass
+        except Exception as e:
+            logger.warning(f"Qwen API 情緒判斷失敗: {e}")
+        return None
+
+    def _detect_by_ollama(self, text: str) -> str:
         try:
             messages = [
                 {"role": "system", "content": self.system_prompt},
@@ -72,10 +133,10 @@ class EmotionDetector:
             if match:
                 emotion = match.group(1)
                 if emotion in self.EMOTION_KEYWORDS.keys():
-                    logger.info(f"[LLM] {text} → {emotion}")
+                    logger.info(f"[Ollama] {text} → {emotion}")
                     return emotion
         except Exception as e:
-            logger.warning(f"LLM 判斷失敗: {e}")
+            logger.warning(f"Ollama 情緒判斷失敗: {e}")
         return None
 
     # -----------------------
@@ -106,8 +167,12 @@ class EmotionDetector:
 _detector_instance = None
 
 
-def detect_emotion(text: str, model: str = "qwen:7b", use_llm: bool = True):
+def detect_emotion(text: str, model: str = None, use_llm: bool = None):
     global _detector_instance
+    if model is None:
+        model = os.getenv("QWEN_EMOTION_MODEL", "qwen-apia8")
+    if use_llm is None:
+        use_llm = os.getenv("EMOTION_USE_LLM", "true").lower() in ["1", "true", "yes", "on"]
     if _detector_instance is None:
         _detector_instance = EmotionDetector(model=model, use_llm=use_llm)
     return _detector_instance.detect_emotion(text)

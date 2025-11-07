@@ -467,27 +467,29 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                 
                 # 一般對話
                 else:
-                    # 1️⃣ 情緒辨識模組
-                    logger.info(f"🎭 開始情緒分析 - 用戶: {user_id}, 訊息: {user_message[:50]}")
-                    try:
-                        emotion_result = detect_emotion(user_message)
-                        logger.info(f"✅ 情緒分析結果: {emotion_result}")
-                    except Exception as e:
-                        logger.error(f"❌ 情緒分析失敗: {e}", exc_info=True)
-                        # 使用預設情緒，避免程式崩潰
-                        emotion_result = {
-                            "emotion": "contentment",
-                            "image": ""
-                        }
-                        logger.warning(f"⚠️ 使用預設情緒: {emotion_result}")
-                    
-                    # 根據情緒生成上下文提示
-                    emotion_context = _build_emotion_context(emotion_result, pet_name)
-                    
-                    # 將情緒上下文加入 system_prompt
+                    # 1️⃣ 情緒辨識模組（僅在 API 模式啟用）
+                    emotion_result = {
+                        "emotion": "contentment",
+                        "image": ""
+                    }
+
+                    if AI_MODE == 'api':
+                        logger.info(f"🎭 開始情緒分析 - 用戶: {user_id}, 訊息: {user_message[:50]}")
+                        try:
+                            emotion_result = detect_emotion(user_message)
+                            logger.info(f"✅ 情緒分析結果: {emotion_result}")
+                        except Exception as e:
+                            logger.error(f"❌ 情緒分析失敗: {e}", exc_info=True)
+                            logger.warning(f"⚠️ 使用預設情緒: {emotion_result}")
+                    else:
+                        logger.info("ℹ️ 情緒分析僅在 API 模式啟用，已略過")
+
+                    # 根據情緒生成上下文提示（僅 API 模式）
                     enhanced_system_prompt = system_prompt
-                    if emotion_context:
-                        enhanced_system_prompt = f"{system_prompt}\n\n        💭 主人現在的情緒狀態：\n        {emotion_context}\n        - 請根據主人的情緒狀態調整你的回應方式\n        - 如果主人情緒低落，要溫柔安慰\n        - 如果主人情緒正向，可以更活潑開心地回應\n"
+                    if AI_MODE == 'api':
+                        emotion_context = _build_emotion_context(emotion_result, pet_name)
+                        if emotion_context:
+                            enhanced_system_prompt = f"{system_prompt}\n\n        💭 主人現在的情緒狀態：\n        {emotion_context}\n        - 請根據主人的情緒狀態調整你的回應方式\n        - 如果主人情緒低落，要溫柔安慰\n        - 如果主人情緒正向，可以更活潑開心地回應\n"
                     
                     history = get_chat_history_func(user_id, pet_id, limit=8)
                     user_saved = save_chat_message_func(user_id, pet_id, 'user', user_message)
@@ -538,7 +540,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
 
                     emotion_image_url = emotion_result.get('image')
 
-                    if emotion in valid_emotions and not emotion_image_url:
+                    if AI_MODE == 'api' and emotion in valid_emotions and not emotion_image_url:
                         emotion_image_url = _get_emotion_image_url(
                             emotion,
                             EXTERNAL_URL,
@@ -546,7 +548,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                             web_slug=pet_web_slug
                         )
 
-                    if emotion in valid_emotions and emotion_image_url:
+                    if AI_MODE == 'api' and emotion in valid_emotions and emotion_image_url:
                         try:
                             # 使用 Flex Message 同時發送文字和圖片
                             flex_message = FlexMessage(
