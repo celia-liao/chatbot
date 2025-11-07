@@ -62,7 +62,8 @@ class EmotionDetector:
         text_s = cc_t2s.convert(text)
         for emotion, keywords in self.EMOTION_KEYWORDS.items():
             for k in keywords:
-                if k in text_s:
+                keyword_s = cc_t2s.convert(k)
+                if k in text_s or keyword_s in text_s:
                     logger.info(f"[Keyword Match] {k} → {emotion}")
                     return emotion
         return None
