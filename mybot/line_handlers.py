@@ -36,8 +36,7 @@ except ImportError:
             logger.warning("⚠️ 使用預設情緒檢測函數（模組未導入）")
             return {
                 "emotion": "contentment",
-                "confidence": 0.5,
-                "polarity": "positive"
+                "image": ""
             }
 
 
@@ -214,7 +213,7 @@ def _build_emotion_context(emotion_result: dict, pet_name: str) -> str:
     根據情緒分析結果建立上下文提示詞
     
     參數:
-        emotion_result (dict): 情緒分析結果，包含 emotion, confidence, polarity
+        emotion_result (dict): 情緒分析結果，至少包含 emotion，可選提供 image
         pet_name (str): 寵物名字
     
     返回:
@@ -223,9 +222,7 @@ def _build_emotion_context(emotion_result: dict, pet_name: str) -> str:
     if not emotion_result:
         return ""
     
-    emotion = emotion_result.get('emotion', 'contentment')
-    polarity = emotion_result.get('polarity', 'positive')
-    confidence = emotion_result.get('confidence', 0.5)
+    emotion = emotion_result.get('emotion', 'contentment').lower()
     
     # 情緒描述映射
     emotion_descriptions = {
@@ -238,20 +235,40 @@ def _build_emotion_context(emotion_result: dict, pet_name: str) -> str:
         'fear': '害怕和擔心',
         'sad': '難過和沮喪'
     }
-    
+
+    polarity_map = {
+        'amusement': 'positive',
+        'awe': 'positive',
+        'contentment': 'positive',
+        'excitement': 'positive',
+        'anger': 'negative',
+        'disgust': 'negative',
+        'fear': 'negative',
+        'sad': 'negative'
+    }
+
     emotion_desc = emotion_descriptions.get(emotion, '情緒平靜')
-    
-    # 根據情緒強度調整描述
-    if confidence >= 0.8:
-        intensity_desc = "非常" if polarity == "positive" else "相當"
-    elif confidence >= 0.6:
-        intensity_desc = "有點" if polarity == "positive" else "稍微"
-    else:
-        intensity_desc = "略微"
-    
-    context = f"主人現在{intensity_desc}{emotion_desc}（情緒：{emotion}，信心度：{confidence:.1%}）"
-    
-    return context
+    polarity = polarity_map.get(emotion, 'neutral')
+
+    polarity_text = {
+        'positive': '正向',
+        'negative': '負向',
+        'neutral': '中性'
+    }.get(polarity, '中性')
+
+    tone_hint_map = {
+        'positive': '情緒偏正向，適合以活潑、鼓勵的語氣回應',
+        'negative': '情緒偏負向，需要溫柔、安撫的語氣回應',
+        'neutral': '情緒較為平衡，可維持中性、穩定語氣'
+    }
+    tone_hint = tone_hint_map.get(polarity, '情緒較為平衡，可維持中性、穩定語氣')
+
+    context_lines = [
+        f"主人目前感到{emotion_desc}（情緒：{emotion}，情感傾向：{polarity_text}）",
+        tone_hint
+    ]
+
+    return "\n        ".join(context_lines)
 
 
 def _handle_whisper_command(user_id, pet_id, pet_name, BASE_URL, configuration, event):
@@ -430,8 +447,7 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                         # 使用預設情緒，避免程式崩潰
                         emotion_result = {
                             "emotion": "contentment",
-                            "confidence": 0.5,
-                            "polarity": "positive"
+                            "image": ""
                         }
                         logger.warning(f"⚠️ 使用預設情緒: {emotion_result}")
                     
@@ -448,7 +464,9 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                     
                     logger.info(f"💬 處理對話 - 用戶: {user_id}, 模式: {AI_MODE}")
                     logger.info(f"📝 輸入訊息: {user_message}")
-                    logger.info(f"🎭 情緒: {emotion_result['emotion']} ({emotion_result['polarity']}, 信心度: {emotion_result['confidence']:.2f})")
+                    logger.info(
+                        f"🎭 情緒: {emotion_result.get('emotion', 'unknown')} (圖片: {'有' if emotion_result.get('image') else '無'})"
+                    )
                     
                     if AI_MODE == 'api':
                         logger.info(f"🌐 使用 API 模式 - 模型: {QWEN_MODEL}")
@@ -477,57 +495,53 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                     # 只有在明確判斷出 8 種情緒之一且信心度足夠時才發送圖片
                     valid_emotions = ['amusement', 'awe', 'contentment', 'excitement', 'anger', 'disgust', 'fear', 'sad']
                     emotion = emotion_result.get('emotion', '').lower()
-                    confidence = emotion_result.get('confidence', 0.0)
-                    
                     # 準備回覆訊息（預設只有文字）
                     messages_to_send = None
-                    
-                    # 只有當情緒在有效列表中且信心度足夠高（>0.6）時才發送圖片
-                    if emotion in valid_emotions and confidence > 0.6:
+
+                    emotion_image_url = emotion_result.get('image')
+
+                    if emotion in valid_emotions and not emotion_image_url:
                         emotion_image_url = _get_emotion_image_url(emotion, EXTERNAL_URL, base_dir)
-                        
-                        if emotion_image_url:
-                            try:
-                                # 使用 Flex Message 同時發送文字和圖片
-                                flex_message = FlexMessage(
-                                    alt_text=f"{pet_name}的回覆",
-                                    contents=FlexContainer.from_dict({
-                                        "type": "bubble",
-                                        "body": {
-                                            "type": "box",
-                                            "layout": "vertical",
-                                            "contents": [
-                                                {
-                                                    "type": "image",
-                                                    "url": emotion_image_url,
-                                                    "size": "full",
-                                                    "aspectMode": "cover",
-                                                    "aspectRatio": "1:1"
-                                                },
-                                                {
-                                                    "type": "text",
-                                                    "text": reply_text,
-                                                    "wrap": True,
-                                                    "size": "md",
-                                                    "margin": "md"
-                                                }
-                                            ]
-                                        }
-                                    })
-                                )
-                                messages_to_send = [flex_message]
-                                logger.info(f"🖼️ 使用 Flex Message 發送文字+圖片: {emotion} (信心度: {confidence:.2f}) -> {emotion_image_url}")
-                            except Exception as img_error:
-                                logger.warning(f"⚠️ 無法建立 Flex Message: {img_error}，改用純文字")
-                                messages_to_send = [TextMessage(text=reply_text)]
-                        else:
-                            logger.info(f"ℹ️ 情緒 {emotion} 沒有對應的圖片 URL，使用純文字")
+
+                    if emotion in valid_emotions and emotion_image_url:
+                        try:
+                            # 使用 Flex Message 同時發送文字和圖片
+                            flex_message = FlexMessage(
+                                alt_text=f"{pet_name}的回覆",
+                                contents=FlexContainer.from_dict({
+                                    "type": "bubble",
+                                    "body": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "image",
+                                                "url": emotion_image_url,
+                                                "size": "full",
+                                                "aspectMode": "cover",
+                                                "aspectRatio": "1:1"
+                                            },
+                                            {
+                                                "type": "text",
+                                                "text": reply_text,
+                                                "wrap": True,
+                                                "size": "md",
+                                                "margin": "md"
+                                            }
+                                        ]
+                                    }
+                                })
+                            )
+                            messages_to_send = [flex_message]
+                            logger.info(f"🖼️ 使用 Flex Message 發送文字+圖片: {emotion} -> {emotion_image_url}")
+                        except Exception as img_error:
+                            logger.warning(f"⚠️ 無法建立 Flex Message: {img_error}，改用純文字")
                             messages_to_send = [TextMessage(text=reply_text)]
                     else:
                         if emotion not in valid_emotions:
                             logger.info(f"ℹ️ 情緒 {emotion} 不在有效列表中，不發送圖片")
-                        elif confidence <= 0.6:
-                            logger.info(f"ℹ️ 情緒 {emotion} 信心度 {confidence:.2f} 不足，不發送圖片")
+                        elif not emotion_image_url:
+                            logger.info(f"ℹ️ 情緒 {emotion} 沒有對應的圖片 URL，使用純文字")
                         messages_to_send = [TextMessage(text=reply_text)]
         
         # 回覆訊息

@@ -1,8 +1,8 @@
-# emotion_detector.py
+# emotion_detector_light.py
 # ============================================
-# 情緒辨識模組
+# 輕量版情緒辨識模組（適合實際系統應用）
 # ============================================
-# 功能：使用本地 LLM 分析中文文字的情緒
+# 功能：先用關鍵詞判斷 → 若無命中再用 LLM → 回傳對應情緒
 # 依賴：ollama, opencc-python-reimplemented
 # ============================================
 
@@ -13,393 +13,111 @@ import ollama
 from opencc import OpenCC
 
 logger = logging.getLogger('pet_chatbot')
-
-# 初始化簡繁轉換器（Traditional to Simple）
-# 用於將輸入文字統一轉換為簡體，提高模型理解準確度
 cc_t2s = OpenCC('t2s')  # 繁體轉簡體
 
 
 class EmotionDetector:
     """
-    情緒分析器類別
-    
-    使用本地 LLM (Ollama) 分析中文文字的情緒類別
-    支援 8 種情緒分類：amusement, awe, contentment, excitement (正向);
-                       anger, disgust, fear, sad (負向)
+    中文情緒辨識器
+    支援 8 類情緒：
+        正向：amusement, awe, contentment, excitement
+        負向：anger, disgust, fear, sad
     """
-    
-    # 情緒關鍵詞映射（用於關鍵詞修正層）
+
     EMOTION_KEYWORDS = {
-        "amusement": [
-            "開心", "好笑", "哈哈", "可愛", "有趣", "好玩", "幽默",
-            "笑死", "太好笑", "超好笑", "笑翻", "笑到", "XD", 
-            "呵呵", "逗", "搞笑", "歡樂", "愉快", "快樂", "歡笑",
-            "逗趣", "笑", "樂", "歡", "喜"
-        ],
-        "awe": [
-            "驚嘆", "震撼", "驚訝", "驚奇", "驚艷", "驚喜", "驚人", "不可思議",
-            "太厲害", "太強", "太棒", "超棒", "厲害", "強", "佩服", "崇拜",
-            "讚嘆", "驚為天人", "嘆為觀止", "令人驚艷", "震撼人心", "震驚",
-            "驚嘆不已"
-        ],
-        "contentment": [
-            "滿足", "安心", "平靜", "舒適", "舒服", "放鬆", "滿意", "愜意",
-            "舒心", "安穩", "安寧", "祥和", "和諧", "知足", "悠閒", "輕鬆",
-            "愉悅", "舒暢", "自在", "舒坦", "安逸", "寧靜", "靜", "安"
-        ],
-        "excitement": [
-            "興奮", "期待", "激動", "好期待", "超期待", "熱血", "熱情",
-            "迫不及待", "好興奮", "超興奮", "興奮不已", "激動不已",
-            "熱血沸騰", "期望", "盼望"
-        ],
-        "anger": [
-            "氣", "煩", "靠北", "無言", "生氣", "憤怒", "惱火", "火大",
-            "不爽", "討厭", "煩躁", "暴躁", "氣死", "氣炸", "氣瘋", "氣憤",
-            "怒", "怒火", "暴怒", "氣到", "氣死我了"
-        ],
-        "disgust": [
-            "厭惡", "反感", "噁心", "討厭", "厭煩", "厭倦", "想吐",
-            "嘔", "噁", "噁爛", "反胃"
-        ],
-        "fear": [
-            "害怕", "擔心", "恐懼", "驚恐", "恐慌", "不安", "焦慮",
-            "憂慮", "驚慌", "緊張", "怕"
-        ],
-        "sad": [
-            "難過", "孤單", "寂寞", "悲傷", "傷心", "沮喪", "失落",
-            "憂鬱", "鬱悶", "低落", "心痛", "心碎", "哀傷", "悲", "哀",
-            "孤獨"
-        ]
+        "amusement": ["好笑", "開心", "可愛", "好玩", "幽默", "笑死", "爆笑", "搞笑", "快樂", "樂", "喜"],
+        "awe": ["驚訝", "震撼", "厲害", "佩服", "太棒了", "讚嘆", "不可思議", "驚艷", "震驚"],
+        "contentment": ["放鬆", "舒服", "平靜", "滿足", "愜意", "安心", "悠閒", "自在", "安穩"],
+        "excitement": ["超開心", "超快樂", "興奮", "激動", "期待", "迫不及待", "熱血", "嗨爆", "爽爆", "high"],
+        "anger": ["生氣", "氣死", "煩", "怒", "不爽", "靠北", "火大", "氣炸"],
+        "disgust": ["噁心", "討厭", "厭惡", "反感", "噁爛"],
+        "fear": ["害怕", "恐懼", "擔心", "緊張", "不安", "焦慮", "慌張"],
+        "sad": ["難過", "悲傷", "傷心", "失落", "孤單", "寂寞", "低落", "沮喪", "心痛", "心碎"]
     }
-    
-    def __init__(self, model: str = "qwen:7b", temperature: float = 0.3):
-        """
-        初始化情緒分析器
-        
-        參數:
-            model (str): Ollama 模型名稱，預設為 "qwen:7b"
-            temperature (float): 模型溫度參數，預設為 0.3（較穩定）
-        """
+
+    EMOTION_IMAGE_MAP = {
+        "amusement": "https://chatbot.crittersmem.com/images/amusement.webp",
+        "awe": "https://chatbot.crittersmem.com/images/awe.webp",
+        "contentment": "https://chatbot.crittersmem.com/images/contentment.webp",
+        "excitement": "https://chatbot.crittersmem.com/images/excitement.webp",
+        "anger": "https://chatbot.crittersmem.com/images/anger.webp",
+        "disgust": "https://chatbot.crittersmem.com/images/disgust.webp",
+        "fear": "https://chatbot.crittersmem.com/images/fear.webp",
+        "sad": "https://chatbot.crittersmem.com/images/sad.webp"
+    }
+
+    def __init__(self, model: str = "qwen:7b", use_llm: bool = True):
         self.model = model
-        self.temperature = temperature
-        
-        # 定義系統提示詞
-        self.system_prompt = """你是一個情緒分析助手，負責判斷文字情緒。
+        self.use_llm = use_llm
+        self.system_prompt = (
+            "你是一個中文情緒分析助手，只能從下列八種情緒中選出一種："
+            "amusement, awe, contentment, excitement, anger, disgust, fear, sad。\n"
+            "請以 JSON 格式輸出，例如：{\"emotion\": \"excitement\"}"
+        )
 
-            【重要】你只能使用以下 8 種情緒類別，不能使用其他任何詞彙：
-            正向情緒（4種）：amusement（開心有趣）, awe（驚嘆震撼）, contentment（滿足安心）, excitement（興奮期待）
-            負向情緒（4種）：anger（生氣憤怒）, disgust（厭惡反感）, fear（害怕擔心）, sad（難過沮喪）
-
-            【嚴格要求】：
-            1. 仔細分析輸入文字，判斷最符合的單一情緒類別
-            2. emotion 欄位必須是上述 8 種情緒中的其中一種，不能使用其他詞（如 happy, sadness, angry 等都不允許）
-            3. 只有在能明確判斷出上述 8 種情緒之一時，才返回該情緒
-            4. confidence 必須是 0 到 1 之間的數值，表示你對情緒判斷的信心度
-            5. polarity 必須與 emotion 一致：
-            - amusement, awe, contentment, excitement → "positive"
-            - anger, disgust, fear, sad → "negative"
-
-            【判斷規則】：
-            - 如果文字明顯表達某一種情緒，使用該情緒並給予高 confidence（>0.7）
-            - 如果文字情緒不明確或混合多種情緒，選擇最主導的情緒並降低 confidence（<0.6）
-            - 如果完全無法判斷，使用 "contentment" 並給予低 confidence（<0.5）
-
-            回覆格式（必須嚴格遵守）：
-            {
-                "emotion": "amusement|awe|contentment|excitement|anger|disgust|fear|sad",
-                "confidence": 0.0-1.0,
-                "polarity": "positive|negative"
-            }
-
-            請勿輸出除JSON以外的內容。"""
-        
-        logger.info(f"EmotionDetector 初始化完成，使用模型: {model}")
-    
-    def _extract_json_from_response(self, text: str) -> dict:
-        """
-        從模型回應中提取 JSON 格式
-        
-        參數:
-            text (str): 模型原始回應
-        
-        返回:
-            dict: 解析後的 JSON 字典，若解析失敗則返回 None
-        """
-        if not text:
-            return None
-        
-        # 嘗試直接解析 JSON
-        try:
-            # 移除可能的 markdown 代碼塊標記
-            text = text.strip()
-            if text.startswith('```'):
-                # 移除 ```json 或 ``` 標記
-                text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
-                text = re.sub(r'\n?```\s*$', '', text, flags=re.MULTILINE)
-            
-            # 嘗試解析 JSON
-            result = json.loads(text.strip())
-            
-            # 驗證必要欄位
-            if all(key in result for key in ['emotion', 'confidence', 'polarity']):
-                return result
-        except json.JSONDecodeError:
-            # 如果直接解析失敗，嘗試提取 JSON 物件
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
-            if json_match:
-                try:
-                    result = json.loads(json_match.group(0))
-                    if all(key in result for key in ['emotion', 'confidence', 'polarity']):
-                        return result
-                except json.JSONDecodeError:
-                    pass
-        
-        return None
-    
-    def _refine_with_keywords(self, text: str, current_emotion: str, current_confidence: float) -> dict:
-        """
-        關鍵詞修正層（Lexical Refinement）
-        
-        當 LLM 信心分數低於 0.6 時，檢查輸入文字中是否包含特定情緒關鍵詞，
-        進行修正並提升信心分數。
-        
-        參數:
-            text (str): 原始輸入文字
-            current_emotion (str): 當前 LLM 判斷的情緒
-            current_confidence (float): 當前信心分數
-        
-        返回:
-            dict: 修正後的情緒結果，格式與 detect_emotion 相同
-        """
-        if current_confidence >= 0.6:
-            # 信心分數已足夠，不需要修正
-            return None
-        
-        # 將文字轉換為簡體以便比對（關鍵詞列表已包含繁簡）
-        text_normalized = cc_t2s.convert(text.strip())
-        
-        # 檢查每個情緒的關鍵詞
-        emotion_scores = {}
+    # -----------------------
+    # 1️⃣ 關鍵詞快速判斷
+    # -----------------------
+    def _detect_by_keywords(self, text: str) -> str:
+        text_s = cc_t2s.convert(text)
         for emotion, keywords in self.EMOTION_KEYWORDS.items():
-            score = 0
-            for keyword in keywords:
-                # 將關鍵詞也轉換為簡體
-                keyword_normalized = cc_t2s.convert(keyword)
-                # 計算關鍵詞出現次數
-                count = text_normalized.count(keyword_normalized)
-                if count > 0:
-                    score += count
-            if score > 0:
-                emotion_scores[emotion] = score
-        
-        # 如果有找到匹配的關鍵詞
-        if emotion_scores:
-            # 找到得分最高的情緒
-            best_emotion = max(emotion_scores.items(), key=lambda x: x[1])[0]
-            best_score = emotion_scores[best_emotion]
-            
-            # 如果找到的情緒與當前不同，或相同但需要提升信心分數，則進行修正
-            if best_emotion != current_emotion:
-                # 情緒不同，進行修正
-                # 根據關鍵詞匹配數量和得分，調整信心分數（至少 0.85）
-                refined_confidence = min(0.85 + (best_score * 0.05), 0.95)
-                
-                # 確定極性
-                if best_emotion in ["amusement", "awe", "contentment", "excitement"]:
-                    polarity = "positive"
-                else:
-                    polarity = "negative"
-                
-                logger.info(
-                    f"關鍵詞修正：{current_emotion} (confidence: {current_confidence:.2f}) -> "
-                    f"{best_emotion} (confidence: {refined_confidence:.2f})，匹配關鍵詞分數: {best_score}"
-                )
-                
-                return {
-                    "emotion": best_emotion,
-                    "confidence": refined_confidence,
-                    "polarity": polarity
-                }
-            elif best_emotion == current_emotion:
-                # 情緒相同但信心分數低，使用關鍵詞匹配提升信心分數至至少 0.85
-                refined_confidence = min(0.85 + (best_score * 0.05), 0.95)
-                
-                # 確定極性
-                if best_emotion in ["amusement", "awe", "contentment", "excitement"]:
-                    polarity = "positive"
-                else:
-                    polarity = "negative"
-                
-                logger.info(
-                    f"關鍵詞修正（提升信心）：{current_emotion} (confidence: {current_confidence:.2f} -> "
-                    f"{refined_confidence:.2f})，匹配關鍵詞分數: {best_score}"
-                )
-                
-                return {
-                    "emotion": best_emotion,
-                    "confidence": refined_confidence,
-                    "polarity": polarity
-                }
-        
-        # 沒有找到匹配的關鍵詞，返回 None 表示不修正
+            for k in keywords:
+                if k in text_s:
+                    logger.info(f"[Keyword Match] {k} → {emotion}")
+                    return emotion
         return None
-    
-    def detect_emotion(self, text: str) -> dict:
-        """
-        分析文字情緒
-        
-        參數:
-            text (str): 輸入的中文文字
-        
-        返回:
-            dict: 情緒分析結果，格式如下：
-                {
-                    "emotion": str,      # 情緒類別（amusement, awe, contentment, excitement, anger, disgust, fear, sad）
-                    "confidence": float, # 信心度（0.0-1.0）
-                    "polarity": str      # 情緒極性（"positive" 或 "negative"）
-                }
-        
-        說明:
-            1. 使用本地 LLM 模型分析文字情緒（繁體轉簡體以提高準確度）
-            2. 若 LLM 信心分數低於 0.6，則啟用關鍵詞修正層（Lexical Refinement）
-            3. 關鍵詞修正層會檢查文字中的情緒關鍵詞，修正情緒並提升信心分數至至少 0.85
-            4. 若模型回應無效或解析失敗，則返回預設值（contentment, 0.5, positive）
-        """
-        if not text or not text.strip():
-            return {
-                "emotion": "contentment",
-                "confidence": 0.5,
-                "polarity": "positive"
-            }
-        
+
+    # -----------------------
+    # 2️⃣ LLM 判斷（可選）
+    # -----------------------
+    def _detect_by_llm(self, text: str) -> str:
         try:
-            # 將繁體中文轉換為簡體，提高模型理解準確度
-            text_simplified = cc_t2s.convert(text.strip())
-            
-            # 構建訊息
             messages = [
                 {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": f"請分析以下文字的情緒：\n{text_simplified}"}
+                {"role": "user", "content": f"句子：{cc_t2s.convert(text)}"}
             ]
-            
-            # 呼叫 Ollama API
-            response = ollama.chat(
-                model=self.model,
-                messages=messages,
-                options={
-                    "temperature": self.temperature
-                }
-            )
-            
-            # 取得回應內容
-            reply = response["message"]["content"]
-            
-            # 解析 JSON
-            result = self._extract_json_from_response(reply)
-            
-            if result:
-                # 驗證情緒類別是否有效
-                valid_emotions = [
-                    "amusement", "awe", "contentment", "excitement",
-                    "anger", "disgust", "fear", "sad"
-                ]
-                
-                emotion = result["emotion"].lower()
-                
-                # 如果情緒不在有效列表中，嘗試映射或根據極性選擇預設值
-                if emotion not in valid_emotions:
-                    # 根據 polarity 選擇最接近的情緒
-                    polarity_hint = result.get("polarity", "").lower()
-                    if "positive" in polarity_hint or polarity_hint == "true":
-                        emotion = "contentment"  # 預設正向情緒
-                    elif "negative" in polarity_hint or polarity_hint == "false":
-                        emotion = "sad"  # 預設負向情緒
-                    else:
-                        emotion = "contentment"  # 完全無法判斷時使用預設
-                
-                # 確保 confidence 在 0-1 範圍內
-                confidence = float(result.get("confidence", 0.5))
-                confidence = max(0.0, min(1.0, confidence))
-                
-                # 確保 polarity 正確
-                polarity = result.get("polarity", "").lower()
-                if polarity not in ["positive", "negative"]:
-                    # 處理布林值或中文
-                    if polarity in ["true", "正向", "積極"]:
-                        polarity = "positive"
-                    elif polarity in ["false", "負向", "消極"]:
-                        polarity = "negative"
-                    else:
-                        # 根據情緒類別自動判斷極性
-                        if emotion in ["amusement", "awe", "contentment", "excitement"]:
-                            polarity = "positive"
-                        else:
-                            polarity = "negative"
-                
-                # 構建初始結果
-                initial_result = {
-                    "emotion": emotion,
-                    "confidence": confidence,
-                    "polarity": polarity
-                }
-                
-                # 關鍵詞修正層：如果信心分數低於 0.6，嘗試使用關鍵詞修正
-                if confidence < 0.6:
-                    refined_result = self._refine_with_keywords(text, emotion, confidence)
-                    if refined_result:
-                        # 使用修正後的結果
-                        return refined_result
-                
-                # 返回 LLM 分析的結果
-                return initial_result
-            
-            # 如果解析失敗，返回預設值
-            logger.warning(f"無法解析情緒分析結果，使用預設值。原始回應: {reply}")
-            return {
-                "emotion": "contentment",
-                "confidence": 0.5,
-                "polarity": "positive"
-            }
-            
+            res = ollama.chat(model=self.model, messages=messages)
+            reply = res["message"]["content"].strip()
+            match = re.search(r'"emotion"\s*:\s*"(\w+)"', reply)
+            if match:
+                emotion = match.group(1)
+                if emotion in self.EMOTION_KEYWORDS.keys():
+                    logger.info(f"[LLM] {text} → {emotion}")
+                    return emotion
         except Exception as e:
-            logger.error(f"情緒分析過程中發生錯誤: {str(e)}", exc_info=True)
-            return {
-                "emotion": "contentment",
-                "confidence": 0.5,
-                "polarity": "positive"
-            }
+            logger.warning(f"LLM 判斷失敗: {e}")
+        return None
+
+    # -----------------------
+    # 3️⃣ 主函式：綜合判斷
+    # -----------------------
+    def detect_emotion(self, text: str) -> dict:
+        if not text or not text.strip():
+            return {"emotion": "contentment", "image": self.EMOTION_IMAGE_MAP["contentment"]}
+
+        # Step 1: 詞典比對
+        emotion = self._detect_by_keywords(text)
+        # Step 2: 若無結果且允許 LLM
+        if not emotion and self.use_llm:
+            emotion = self._detect_by_llm(text)
+        # Step 3: 都沒結果
+        if not emotion:
+            emotion = "contentment"
+
+        return {
+            "emotion": emotion,
+            "image": self.EMOTION_IMAGE_MAP.get(emotion, ""),
+        }
 
 
-# 建立全域實例（預設使用 qwen:7b 模型）
+# -----------------------
+# 全域便捷呼叫函式
+# -----------------------
 _detector_instance = None
 
 
-def detect_emotion(text: str, model: str = "qwen:7b", temperature: float = 0.3) -> dict:
-    """
-    分析文字情緒（便捷函式）
-    
-    參數:
-        text (str): 輸入的中文文字
-        model (str, optional): Ollama 模型名稱，預設為 "qwen:7b"
-        temperature (float, optional): 模型溫度參數，預設為 0.3
-    
-    返回:
-        dict: 情緒分析結果，格式如下：
-            {
-                "emotion": str,      # 情緒類別
-                "confidence": float, # 信心度（0.0-1.0）
-                "polarity": str      # 情緒極性（"positive" 或 "negative"）
-            }
-    
-    說明:
-        這是模組級別的便捷函式，內部使用 EmotionDetector 類別
-        首次呼叫時會建立 EmotionDetector 實例並快取
-    """
+def detect_emotion(text: str, model: str = "qwen:7b", use_llm: bool = True):
     global _detector_instance
-    
-    # 如果實例不存在或模型參數變更，重新建立實例
-    if _detector_instance is None or _detector_instance.model != model or _detector_instance.temperature != temperature:
-        _detector_instance = EmotionDetector(model=model, temperature=temperature)
-    
+    if _detector_instance is None:
+        _detector_instance = EmotionDetector(model=model, use_llm=use_llm)
     return _detector_instance.detect_emotion(text)
-
