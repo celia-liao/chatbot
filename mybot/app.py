@@ -204,7 +204,7 @@ def get_pet_system_prompt(pet_id=None):
         pet_id (int, optional): 寵物 ID，如果不提供則使用環境變數的 PET_ID
     
     返回:
-        tuple: (system_prompt, pet_name) 或 (None, None) 如果載入失敗
+        tuple: (system_prompt, pet_name, web_slug) 或 (None, None, None) 如果載入失敗
     
     說明:
         從資料庫載入寵物資料並建立系統提示詞
@@ -219,7 +219,7 @@ def get_pet_system_prompt(pet_id=None):
         pet_profile = get_pet_profile(pet_id)
         
         if not pet_profile:
-            return None, None
+            return None, None, None
         
         # 根據 AI_MODE 選擇對應的 build_system_prompt 函數
         if AI_MODE == 'api':
@@ -241,10 +241,10 @@ def get_pet_system_prompt(pet_id=None):
                 letter=pet_profile["letter"]
             )
         
-        return system_prompt, pet_profile["name"]
+        return system_prompt, pet_profile["name"], pet_profile.get("web_slug")
     except Exception as e:
         app.logger.error(f"載入寵物資料失敗: {e}")
-        return None, None
+        return None, None, None
 
 
 # ============================================
@@ -554,7 +554,7 @@ def main():
         print("❌ LINE Channel Secret 未設定")
     
     # 測試寵物資料載入
-    system_prompt, pet_name = get_pet_system_prompt()
+    system_prompt, pet_name, _ = get_pet_system_prompt()
     if system_prompt and pet_name:
         print(f"✅ 寵物資料已載入：{pet_name}")
     else:

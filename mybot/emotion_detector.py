@@ -35,17 +35,6 @@ class EmotionDetector:
         "sad": ["難過", "悲傷", "傷心", "失落", "孤單", "寂寞", "低落", "沮喪", "心痛", "心碎"]
     }
 
-    EMOTION_IMAGE_MAP = {
-        "amusement": "https://chatbot.crittersmem.com/images/amusement.webp",
-        "awe": "https://chatbot.crittersmem.com/images/awe.webp",
-        "contentment": "https://chatbot.crittersmem.com/images/contentment.webp",
-        "excitement": "https://chatbot.crittersmem.com/images/excitement.webp",
-        "anger": "https://chatbot.crittersmem.com/images/anger.webp",
-        "disgust": "https://chatbot.crittersmem.com/images/disgust.webp",
-        "fear": "https://chatbot.crittersmem.com/images/fear.webp",
-        "sad": "https://chatbot.crittersmem.com/images/sad.webp"
-    }
-
     def __init__(self, model: str = "qwen:7b", use_llm: bool = True):
         self.model = model
         self.use_llm = use_llm
@@ -94,7 +83,7 @@ class EmotionDetector:
     # -----------------------
     def detect_emotion(self, text: str) -> dict:
         if not text or not text.strip():
-            return {"emotion": "contentment", "image": self.EMOTION_IMAGE_MAP["contentment"]}
+            return {"emotion": "contentment", "image": ""}
 
         # Step 1: 詞典比對
         emotion = self._detect_by_keywords(text)
@@ -107,7 +96,7 @@ class EmotionDetector:
 
         return {
             "emotion": emotion,
-            "image": self.EMOTION_IMAGE_MAP.get(emotion, ""),
+            "image": "",
         }
 
 

@@ -89,7 +89,8 @@ def get_pet_profile(pet_id: int):
             "persona_key": pet_data.get("persona_key", "friendly"),     # 性格類型
             "cover_slogan": pet_data.get("cover_slogan", ""),           # 主人的愛意標語
             "lifeData": pet_data.get("lifeData", []),                   # 生命軌跡事件列表
-            "letter": pet_data.get("letter", "")                        # 主人的信件內容
+            "letter": pet_data.get("letter", ""),                      # 主人的信件內容
+            "web_slug": pet_data.get("web_slug") or pet_data.get("webslug")
         }
         
         # 除錯：顯示最終返回的資料

@@ -131,7 +131,7 @@ def _handle_fortune_command(user_id, pet_id, generate_fortune_card_func, configu
 _emotion_images_cache = {}
 
 
-def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None) -> str:
+def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None, web_slug: str = None) -> str:
     """
     根據情緒獲取對應的圖片 URL（從資料夾內隨機選擇一張）
     
@@ -139,6 +139,7 @@ def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None
         emotion (str): 情緒類別（amusement, awe, contentment, excitement, anger, disgust, fear, sad）
         EXTERNAL_URL (str): 外部訪問 URL（用於生成圖片 URL）
         base_dir (str, optional): 專案根目錄路徑，如果為 None 則嘗試從環境推斷
+        web_slug (str, optional): 寵物對應的 web slug，用於定位專屬圖片資料夾
     
     返回:
         str: 情緒對應的隨機圖片 URL，如果沒有則返回 None
@@ -148,28 +149,45 @@ def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None
         從對應情緒資料夾內隨機選擇一張圖片文件
     """
     emotion = emotion.lower()
+    cache_key = (web_slug or "_default", emotion)
     
     # 如果緩存中沒有該情緒的圖片列表，掃描資料夾
-    if emotion not in _emotion_images_cache:
+    if cache_key not in _emotion_images_cache:
+        search_rel_paths = []
+        if web_slug:
+            search_rel_paths.append(('emotions', web_slug, emotion))
+            search_rel_paths.append(('emotion', web_slug, emotion))
+        search_rel_paths.append(('emotions', emotion))
+        search_rel_paths.append(('emotion', emotion))
+
+        emotion_dir = None
+        url_prefix = None
+        
         # 如果沒有提供 base_dir，嘗試從當前工作目錄推斷
-        if base_dir is None:
-            # 嘗試找到專案根目錄（包含 assets 資料夾的目錄）
-            current_dir = os.getcwd()
-            # 檢查當前目錄或父目錄是否有 assets 資料夾
-            possible_paths = [
-                os.path.join(current_dir, 'assets', 'images', 'emotions', emotion),
-                os.path.join(os.path.dirname(current_dir), 'assets', 'images', 'emotions', emotion),
-                os.path.join(current_dir, '..', 'assets', 'images', 'emotions', emotion),
-            ]
-            
-            emotion_dir = None
-            for path in possible_paths:
-                abs_path = os.path.abspath(path)
+        current_dir = os.getcwd()
+        candidate_roots = []
+        if base_dir:
+            candidate_roots.append(base_dir)
+        candidate_roots.extend([
+            current_dir,
+            os.path.dirname(current_dir),
+            os.path.abspath(os.path.join(current_dir, '..'))
+        ])
+        
+        for rel_path in search_rel_paths:
+            found = False
+            for root in candidate_roots:
+                abs_path = os.path.abspath(os.path.join(root, 'assets', 'images', *rel_path))
                 if os.path.isdir(abs_path):
                     emotion_dir = abs_path
+                    if len(rel_path) == 3:
+                        url_prefix = f"{EXTERNAL_URL}/assets/images/{rel_path[0]}/{rel_path[1]}/{rel_path[2]}"
+                    else:
+                        url_prefix = f"{EXTERNAL_URL}/assets/images/{rel_path[0]}/{rel_path[1]}"
+                    found = True
                     break
-        else:
-            emotion_dir = os.path.join(base_dir, 'assets', 'images', 'emotions', emotion)
+            if found:
+                break
         
         if emotion_dir and os.path.isdir(emotion_dir):
             # 掃描資料夾內的所有圖片文件
@@ -181,23 +199,30 @@ def _get_emotion_image_url(emotion: str, EXTERNAL_URL: str, base_dir: str = None
                     if any(filename.lower().endswith(ext) for ext in image_extensions):
                         image_files.append(filename)
                 
+                if image_files and not url_prefix:
+                    url_prefix = f'{EXTERNAL_URL}/assets/images/emotions/{emotion}'
+                
                 # 建立完整 URL 列表
                 image_urls = [
-                    f'{EXTERNAL_URL}/assets/images/emotions/{emotion}/{filename}'
+                    f'{url_prefix}/{filename}'
                     for filename in image_files
                 ]
                 
-                _emotion_images_cache[emotion] = image_urls
-                logger.info(f"📂 掃描情緒資料夾 {emotion}: 找到 {len(image_urls)} 張圖片")
+                _emotion_images_cache[cache_key] = image_urls
+                logger.info(
+                    f"📂 掃描情緒資料夾 {emotion} (slug={web_slug or 'default'}): 找到 {len(image_urls)} 張圖片"
+                )
             except Exception as e:
-                logger.warning(f"⚠️ 掃描情緒資料夾失敗 {emotion}: {e}")
-                _emotion_images_cache[emotion] = []
+                logger.warning(f"⚠️ 掃描情緒資料夾失敗 {emotion} (slug={web_slug or 'default'}): {e}")
+                _emotion_images_cache[cache_key] = []
         else:
-            logger.warning(f"⚠️ 情緒資料夾不存在: {emotion_dir}")
-            _emotion_images_cache[emotion] = []
+            logger.warning(
+                f"⚠️ 情緒資料夾不存在: {emotion} (slug={web_slug or 'default'})，搜尋路徑: {search_rel_paths}"
+            )
+            _emotion_images_cache[cache_key] = []
     
     # 從緩存中隨機選擇一張圖片
-    image_urls = _emotion_images_cache.get(emotion, [])
+    image_urls = _emotion_images_cache.get(cache_key, [])
     
     if image_urls:
         selected_url = random.choice(image_urls)
@@ -405,7 +430,12 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
         
         # 已設定寵物，處理其他指令
         else:
-            system_prompt, pet_name = get_pet_system_prompt_func(pet_id)
+            result = get_pet_system_prompt_func(pet_id)
+            if isinstance(result, tuple) and len(result) == 3:
+                system_prompt, pet_name, pet_web_slug = result
+            else:
+                system_prompt, pet_name = result
+                pet_web_slug = None
             logger.info(f"載入寵物資料 - pet_id: {pet_id}, pet_name: {pet_name}")
             
             if not system_prompt:
@@ -501,7 +531,12 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                     emotion_image_url = emotion_result.get('image')
 
                     if emotion in valid_emotions and not emotion_image_url:
-                        emotion_image_url = _get_emotion_image_url(emotion, EXTERNAL_URL, base_dir)
+                        emotion_image_url = _get_emotion_image_url(
+                            emotion,
+                            EXTERNAL_URL,
+                            base_dir,
+                            web_slug=pet_web_slug
+                        )
 
                     if emotion in valid_emotions and emotion_image_url:
                         try:
