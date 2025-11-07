@@ -490,7 +490,11 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                         enhanced_system_prompt = f"{system_prompt}\n\n        💭 主人現在的情緒狀態：\n        {emotion_context}\n        - 請根據主人的情緒狀態調整你的回應方式\n        - 如果主人情緒低落，要溫柔安慰\n        - 如果主人情緒正向，可以更活潑開心地回應\n"
                     
                     history = get_chat_history_func(user_id, pet_id, limit=8)
-                    save_chat_message_func(user_id, pet_id, 'user', user_message)
+                    user_saved = save_chat_message_func(user_id, pet_id, 'user', user_message)
+                    if not user_saved:
+                        logger.error(
+                            f"❌ 無法將使用者訊息寫入資料庫 - user: {user_id}, pet: {pet_id}, message: {user_message[:50]}"
+                        )
                     
                     logger.info(f"💬 處理對話 - 用戶: {user_id}, 模式: {AI_MODE}")
                     logger.info(f"📝 輸入訊息: {user_message}")
@@ -519,7 +523,11 @@ def handle_text_message(event, get_pet_id_by_line_user_func, get_pet_system_prom
                         )
                         logger.info("✅ Ollama 模式回應完成")
                     
-                    save_chat_message_func(user_id, pet_id, 'assistant', reply_text)
+                    assistant_saved = save_chat_message_func(user_id, pet_id, 'assistant', reply_text)
+                    if not assistant_saved:
+                        logger.error(
+                            f"❌ 無法將寵物回覆寫入資料庫 - user: {user_id}, pet: {pet_id}, reply: {reply_text[:50]}"
+                        )
                     
                     # 🖼️ 判斷是否需要發送情緒圖片
                     # 只有在明確判斷出 8 種情緒之一且信心度足夠時才發送圖片

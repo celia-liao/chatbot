@@ -10,6 +10,7 @@
 import pymysql
 import requests
 import json
+import logging
 
 # 支援兩種運行方式
 try:
@@ -198,10 +199,15 @@ def save_chat_message(line_user_id: str, pet_id: int, role: str, message: str):
                 (line_user_id, pet_id, role, message)
             )
             connection.commit()
-            print(f"[DEBUG] 已儲存對話記錄 - user: {line_user_id}, pet: {pet_id}, role: {role}")
+            logger = logging.getLogger('db_utils')
+            logger.debug(
+                "已儲存對話記錄",
+                extra={'line_user_id': line_user_id, 'pet_id': pet_id, 'role': role}
+            )
             return True
     except Exception as e:
-        print(f"[ERROR] 儲存對話記錄失敗: {e}")
+        logger = logging.getLogger('db_utils')
+        logger.error(f"儲存對話記錄失敗: {e}", exc_info=True)
         connection.rollback()
         return False
     finally:
