@@ -8,6 +8,7 @@
 # ============================================
 
 import os
+import sys
 import logging
 import uuid
 import random
@@ -41,20 +42,25 @@ load_dotenv()
 # Logging 設定
 # ============================================
 
-# 確保 logs 目錄存在
-os.makedirs('logs', exist_ok=True)
+# 設定 logging 格式與輸出
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, "app.log")
 
-# 設定 logging 格式
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),  # 輸出到控制台
-        logging.FileHandler('logs/app.log', encoding='utf-8')  # 輸出到檔案
-    ]
-)
+root_logger = logging.getLogger()
+if not root_logger.handlers:
+    root_logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-# 建立 logger
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    root_logger.addHandler(stream_handler)
+
+# 建立應用程式 logger
 logger = logging.getLogger('pet_chatbot')
 
 # 支援兩種運行方式：
